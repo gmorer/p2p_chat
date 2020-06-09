@@ -42,7 +42,8 @@ pub async fn send_static(req: Request<Body>) -> Result<Response<Body>> {
 	};
 	let mime = match Path::new(&uri).extension().and_then(OsStr::to_str).unwrap() {
 		"html" => "text/html",
-		"js" => "text/javascript",
+		"js" => "application/javascript",
+		"wasm" => "application/wasm",
 		_ => ""
 	};
 	let file = match File::open(format!("{}/{}", STATIC_FOLDER, uri)).await {
@@ -68,8 +69,8 @@ async fn handler(peers: PeerMap, addr: SocketAddr, req: Request<Body>) -> Result
 
 #[tokio::main]
 async fn main() -> Result<()> {
-	let data = WebSocketData { data: "Hello World!".to_string() };
-	println!("{}", data.data);
+	// let data = WebSocketData { data: "Hello World!".to_string() };
+	// println!("{}", data.data);
 	
 	let peers = PeerMap::new(Mutex::new(HashMap::new()));
 	

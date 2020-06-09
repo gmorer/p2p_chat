@@ -28,10 +28,15 @@ async fn upgrade(peers: PeerMap, addr: SocketAddr, upgraded: Upgraded) {
 	
 	// broadcast_incoming stop when the stream stop
 	let broadcast_incoming = ws_receiver.try_for_each(|msg| {
+		// println!(
+		// 	"Received a message from {}: {}",
+		// 	addr,
+		// 	msg.to_text().unwrap()
+		// );
 		println!(
-			"Received a message from {}: {}",
+			"Received a message from {}: {:?}",
 			addr,
-			msg.to_text().unwrap()
+			msg
 		);
 		let peers = peers.lock().unwrap();
 		

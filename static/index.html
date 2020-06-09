@@ -3,44 +3,15 @@
 
 <head>
 	<meta content="text/html;charset=utf-8" http-equiv="Content-Type" />
-	<title>This is the title of the webpage!</title>
+	<title>P2P Chat</title>
 </head>
 
 <body>
-
-	<script type=module>
-		import init, { hello } from './weblib.js';
-		// Like with the `--target web` output the exports are immediately
-		// available but they won't work until we initialize the module. Unlike
-		// `--target web`, however, the globals are all stored on a
-		// `wasm_bindgen` global. The global itself is the initialization
-		// function and then the properties of the global are all the exported
-		// functions.
-		//
-		// Note that the name `wasm_bindgen` can be configured with the
-		// `--no-modules-global` CLI flag
-		// const { add } = wasm_bindgen;
-  
-		async function run() {
-			// wasm.hello()
-		//   await wasm_bindgen('./pkg/without_a_bundler_no_modules_bg.wasm');
-  
-		//   const result = add(1, 2);
-		//   console.log(`1 + 2 = ${result}`);
-		await init();
-		hello();
-
-		// And afterwards we can use all the functionality defined in wasm.
-		// const result = add(1, 2);
-		// console.log(`1 + 2 = ${result}`);
-		// if (result !== 3)
-			// throw new Error("wasm addition doesn't work!");
-		}
-  
-		run();
-	  </script>
+	<script type="module" src="/index.js"></script>
 
 	<p>Are you there?</p>
+	<input type="text" id="message_field"></input>
+	<button id="send_message">Send message</button>
 </body>
 
 </html>
