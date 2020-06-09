@@ -2,9 +2,8 @@ use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use web_sys::{ MessageEvent };
 use futures::channel::mpsc::UnboundedSender;
-use crate::{ log, console_log };
-use crate::streams::{ Event, Branch, State };
-use crate::SOCKS;
+// use crate::{ log, console_log };
+use crate::streams::{ Event, Branch };
 
 #[allow(dead_code)]
 pub struct CB {
@@ -17,19 +16,12 @@ impl CB {
 	pub fn init(sender: UnboundedSender<Event>) -> Self {
 		let sender1 = sender.clone();
 		let message_from_server = Closure::wrap(Box::new(move |msg :JsValue| {
-			SOCKS.with(|f|
-				match f.borrow().server.state {
-					State::Connected(_) => {
-						let msg = msg.dyn_ref::<MessageEvent>()
-							.expect("not a message event")
-							.data()
-							.as_string()
-							.expect("Cannot convert to string");
-						sender1.unbounded_send(Event::Message(Branch::Server, msg));
-					},
-					_ => console_log!("Receiving something from a dead server: {:?}", msg)
-				}
-			)
+			let msg = msg.dyn_ref::<MessageEvent>()
+				.expect("not a message event")
+				.data()
+				.as_string()
+				.expect("Cannot convert to string");
+			sender1.unbounded_send(Event::Message(Branch::Server, msg));
 		}) as Box<dyn FnMut(JsValue)>);
 		let sender2 = sender.clone();
 		let connected_from_server = Closure::wrap(Box::new(move || {

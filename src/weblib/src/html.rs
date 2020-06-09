@@ -51,7 +51,9 @@ fn on_click(document: &Document, id: &'static str, sender: UnboundedSender<Event
 
 }
 
-pub fn connect_html(document: &Document, sender: UnboundedSender<Event>) {
+pub fn connect_html(sender: UnboundedSender<Event>) {
+	let window = window().expect("Cannot get the window object");
+	let document = window.document().expect("window should have a document");
 	let sender1 = sender.clone();
-	on_click(document, BUTTON_SEND_MESSAGE, sender);
+	on_click(&document, BUTTON_SEND_MESSAGE, sender);
 }

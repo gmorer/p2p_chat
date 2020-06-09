@@ -1,21 +1,12 @@
 use wasm_bindgen::prelude::*;
 use web_sys::{ WebSocket, window, BinaryType };
+use js_sys::Date;
 use futures::channel::mpsc::{ UnboundedSender };
 use wasm_bindgen::JsCast;
-use std::time::{SystemTime, UNIX_EPOCH};
 use crate::cb::CB;
 
-use crate::{ log, console_log, SOCKS };
+use crate::{ log, console_log };
 use crate::html::{ MESSAGE_FIELD_ID, BUTTON_SEND_MESSAGE, get_input_value, set_input_value  };
-
-
-// This functino return an error: RuntimeError: unreachable executed
-fn get_actual_timestamp() -> u64 {
-	SystemTime::now()
-		.duration_since(UNIX_EPOCH)
-		.expect("Time went backwards")
-		.as_secs()
-}
 
 #[derive(Debug)]
 #[allow(dead_code)]
@@ -35,27 +26,22 @@ pub enum State {
 	Waiting(u64),
 }
 
-fn reconnect_server() {
-	SOCKS.with(|f| {
-		let mut f = f.borrow_mut();
-		// f.server = Some;
-		let cb = f.cb.as_ref().expect("Callback not set while program running");
-		let socket_url = format!(
-			"ws://{}",
-			window().expect("Cannot get the window object").location().host().expect("cannot get the url")
-		);
-		console_log!("window location: {} ", socket_url);
-		match WebSocket::new(&socket_url) {
-			Ok(ws) => {
-				ws.set_binary_type(BinaryType::Arraybuffer);
-				ws.set_onopen(Some(cb.connected_from_server.as_ref().unchecked_ref()));
-				ws.set_onclose(Some(cb.disconnect_from_server.as_ref().unchecked_ref()));
-				ws.set_onmessage(Some(cb.message_from_server.as_ref().unchecked_ref()));
-				f.server.socket = Some(ws);
-			}
-			Err(e) => console_log!("Error while connecting the server socket: {:?}", e)
-		};
-	})
+fn reconnect_server(socks: &mut Sockets, cb: &CB) {
+	let socket_url = format!(
+		"ws://{}",
+		window().expect("Cannot get the window object").location().host().expect("cannot get the url")
+	);
+	console_log!("window location: {} ", socket_url);
+	match WebSocket::new(&socket_url) {
+		Ok(ws) => {
+			ws.set_binary_type(BinaryType::Arraybuffer);
+			ws.set_onopen(Some(cb.connected_from_server.as_ref().unchecked_ref()));
+			ws.set_onclose(Some(cb.disconnect_from_server.as_ref().unchecked_ref()));
+			ws.set_onmessage(Some(cb.message_from_server.as_ref().unchecked_ref()));
+			socks.server.socket = Some(ws);
+		}
+		Err(e) => console_log!("Error while connecting the server socket: {:?}", e)
+	};
 }
 
 #[derive(Debug)]
@@ -69,46 +55,40 @@ pub enum Event {
 }
 
 impl Event {
-	pub fn execute(self, sender: UnboundedSender<Event>) {
+	pub fn execute(self, sender: UnboundedSender<Event>, socks: &mut Sockets, cb: &CB) {
 		match self {
 			Event::Verification => console_log!("Getting verification"),
-			Event::Disconnect(branch) => Event::disconnect(branch),
-			Event::Connected(branch) => Event::connected(branch),
-			// Event::Connected(branch) => console_log!("getting connection on {:?}", branch),
+			Event::Disconnect(branch) => Event::disconnect(socks, cb, branch),
+			Event::Connected(branch) => Event::connected(socks, branch),
 			Event::Message(branch, msg) => console_log!("Getting a message from {:?} : {}", branch, msg),
-			Event::Html(id, msg) => Event::html(id, msg)
+			Event::Html(id, msg) => Event::html(socks, id, msg)
 		};
 	}
 
-	fn connected(branch: Branch) {
-		SOCKS.with(|f| {
-			let mut f = f.borrow_mut();
-			match branch {
-				Branch::Server => f.server.state = State::Connected(42 as u64),
-				// Branch::Server => f.server.state = State::Connected(get_actual_timestamp()),
-				_ => console_log!("Receveing connection from nowhere")
-			}
-		})
+	fn connected(socks: &mut Sockets, branch: Branch) {
+		console_log!("Connected: {:?}", branch);
+		match branch {
+			// Branch::Server => socks.server.state = State::Connected(42 as u64),
+			Branch::Server => socks.server.state = State::Connected(Date::new_0().get_time() as u64),
+			_ => console_log!("Receveing connection from nowhere")
+		}
 	}
 
-	fn html(id: String, msg: JsValue) {
+	fn html(socks: &Sockets, id: String, msg: JsValue) {
 		match id.as_str() {
 			BUTTON_SEND_MESSAGE => {
 				let msg = get_input_value(MESSAGE_FIELD_ID);
 				set_input_value(MESSAGE_FIELD_ID, "");
 				console_log!("need to send {}", msg);
-				SOCKS.with(|f| {
-					let f = f.borrow();
-					f.server.send(msg);
-				})
+				socks.server.send(msg);
 			}
 			_=> console_log!("not handled html element: {}", id)
 		}
 	}
 
-	fn disconnect(branch: Branch) {
+	fn disconnect(socks: &mut Sockets, cb: &CB, branch: Branch) {
 		match branch {
-			Branch::Server => reconnect_server(),
+			Branch::Server => reconnect_server(socks, cb),
 			_ => console_log!("unsupported disconnect branch: {:?}", branch)
 		};
 	}
@@ -129,20 +109,19 @@ impl Pstream {
 	}
 }
 
+// TODO all mutex
 pub struct Sockets {
 	pub server: Pstream,
 	// pub right: Option<Pstream>,
 	// pub dright: Option<Pstream>,
 	// pub left: Option<Pstream>,
 	// pub dleft: Option<Pstream>
-	pub cb: Option<CB>
 }
 
 impl Sockets {
 	pub fn default() -> Self {
 		Sockets {
 			server: Pstream { state: State::Disconnected(None), socket: None },
-			cb: None
 			// server: Some(Pstream::from_ws(server_ws)),
 			// right: None,
 			// dright: None,

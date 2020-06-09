@@ -1,9 +1,7 @@
 use wasm_bindgen::prelude::*;
-use web_sys::{ window, Document };
 use futures::channel::mpsc::unbounded;
 use futures::future;
 use futures::stream::StreamExt;
-use std::cell::RefCell;
 
 // mod webrtc;
 mod streams;
@@ -14,11 +12,6 @@ use cb::CB;
 
 mod html;
 use html::connect_html;
-
-// TODO: Better way to get global for closure
-thread_local! {
-	pub static SOCKS: RefCell<streams::Sockets> = RefCell::new(streams::Sockets::default());
-}
 
 #[wasm_bindgen]
 extern "C" {
@@ -34,15 +27,17 @@ macro_rules! console_log {
 	($($t:tt)*) => (log(&format_args!($($t)*).to_string()))
 }
 
-async fn main_loop(document: &Document) {
+async fn main_loop() {
 	let (sender, receiver) = unbounded::<Event>();
 
-	// keep callback in memory to not create memory leaks with forget()
-	SOCKS.with(|f| { f.borrow_mut().cb = Some(CB::init(sender.clone())); });
-	connect_html(document, sender.clone());
+	let cb = CB::init(sender.clone());
+	let mut socks = streams::Sockets::default();
+	connect_html(sender.clone());
 	sender.unbounded_send(Event::Disconnect(Branch::Server));
+	// keep callback in memory to not create memory leaks with forget()
+	// SOCKS.with(|f| { f.borrow_mut().cb = Some(CB::init(sender.clone())); });
 	receiver.for_each(|e| {
-		e.execute(sender.clone());
+		e.execute(sender.clone(), &mut socks, &cb);
 		future::ready(())
 	}).await;
 	console_log!("This should not be reachable")
@@ -50,9 +45,7 @@ async fn main_loop(document: &Document) {
 
 #[wasm_bindgen(start)]
 pub async fn main() -> Result<(), JsValue> {
-	let window = window().expect("Cannot get the window object");
-	let document = window.document().expect("window should have a document");
-	main_loop(&document).await;
+	main_loop().await;
 	// connect_html(&sockets, &document);
 	// sockets.main_loop().await;
 	// impl on disconnect to reconnect to the server
