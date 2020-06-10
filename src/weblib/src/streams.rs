@@ -62,14 +62,23 @@ impl Event {
 			Event::Verification => console_log!("Getting verification"),
 			Event::Disconnect(branch) => Event::disconnect(socks, cb, branch),
 			Event::Connected(branch) => Event::connected(socks, branch),
-			Event::ServerMessage(branch, msg) => console_log!("Getting a message from {:?} : {:?}", branch, msg),
+			Event::ServerMessage(branch, msg) => Event::server_msg(socks, msg, branch),
 			Event::Html(id, msg) => Event::html(socks, id, msg)
 		};
 	}
 
-	// fn message(branch: Branch, msg) {
-	// 	match
-	// }
+	fn server_msg(socks: &mut Sockets, msg: WebSocketData, branch: Branch) {
+		console_log!("Getting a message from {:?} : {:?}", branch, msg);
+		match msg {
+			WebSocketData::OfferSDP(data, addr) => {
+				if (&data != "pong") { // TODO change this
+					let response = WebSocketData::OfferSDP("pong".to_string(), addr);
+					socks.server.send(response.into_u8().expect("error while transforming"));
+				}
+			},
+			_ => {}
+		};
+	}
 
 	fn connected(socks: &mut Sockets, branch: Branch) {
 		console_log!("Connected: {:?}", branch);
@@ -77,7 +86,11 @@ impl Event {
 			// Branch::Server => socks.server.state = State::Connected(42 as u64),
 			Branch::Server => {
 				socks.server.state = State::Connected(Date::new_0().get_time() as u64);
-				// if socks.	
+				if socks.right.is_none() && socks.left.is_none() { // add the others
+					// TODO webrtc data for the offer
+					let response = WebSocketData::OfferSDP("Test".to_string(), None);
+					socks.server.send(response.into_u8().expect("fking error"))
+				}
 			},
 			_ => console_log!("Receveing connection from nowhere")
 		}
