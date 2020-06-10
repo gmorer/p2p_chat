@@ -13,7 +13,8 @@ default = [
 	"futures",
 	"futures-util",
 	"tungstenite",
-	"tokio-util"
+	"tokio-util",
+	"rand"
 ]
 web = []
 
@@ -28,6 +29,7 @@ features = ["full"]
 
 [dependencies]
 bincode = "1.2"
+rand = { version = "0.7", optional = true }
 serde = { version = "1.0", features = ["derive"] }
 hyper = { version = "0.13.6", optional = true }
 tokio = { version = "0.2", features = ["macros", "signal", "io-util", "fs"], optional = true}

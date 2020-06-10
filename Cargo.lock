@@ -499,6 +499,7 @@ dependencies = [
  "futures-util",
  "headers",
  "hyper",
+ "rand",
  "serde",
  "tokio",
  "tokio-tungstenite",

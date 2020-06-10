@@ -8,7 +8,10 @@ use futures::channel::mpsc::unbounded;
 use hyper::upgrade::Upgraded;
 use hyper::{Body, Request, Response, StatusCode};
 use headers::HeaderMapExt;
-
+use protocols::WebSocketData;
+use tungstenite::Message;
+use tungstenite::error::Error;
+use crate::process::process;
 
 use crate::PeerMap;
 use crate::Result;
@@ -28,30 +31,39 @@ async fn upgrade(peers: PeerMap, addr: SocketAddr, upgraded: Upgraded) {
 	
 	// broadcast_incoming stop when the stream stop
 	let broadcast_incoming = ws_receiver.try_for_each(|msg| {
-		// println!(
-		// 	"Received a message from {}: {}",
-		// 	addr,
-		// 	msg.to_text().unwrap()
-		// );
-		println!(
-			"Received a message from {}: {:?}",
-			addr,
-			msg
-		);
-		let peers = peers.lock().unwrap();
+		let msg = match WebSocketData::from_u8(msg.into_data()) {
+			Ok(msg) => msg,
+			Err(e) => {
+				eprintln!("Socket: error while parsing incomming message: {}", e);
+				return future::err(Error::Protocol(std::borrow::Cow::Borrowed("Invalid protocol")));
+			}
+		};
+		println!("Received a message from {}: {:?}", addr, msg);
+		
+		// process the msg
+		let rsp = process(addr, msg, &peers);
+		
+		if let Some(rsp) = rsp {
+			let rsp = match rsp.into_u8() {
+				Ok(rsp) => Message::binary(rsp),
+				Err(e) => {
+					eprintln!("Error while creating data from msg: {}", e);
+					return future::err(Error::Protocol(std::borrow::Cow::Borrowed("Internal Error")));
+				}
+			};
+			// TODO: remove those warning
+			match peers.lock().unwrap().get(&addr) {
+				Some(sender) => sender.unbounded_send(rsp),
+				None => {
+					eprintln!("Cannot a reply to a phantom");
+					return future::err(Error::Protocol(std::borrow::Cow::Borrowed("Internal Error")));
+				}
+			};
+		}
+		future::ok(())
 		
 		// We want to broadcast the message to everyone except ourselves.
-		let broadcast_recipients = peers
-			.iter()
-			.filter(|(peer_addr, _)| peer_addr != &&addr)
-			.map(|(_, ws_sink)| ws_sink);
-		
-		for recp in broadcast_recipients {
-			// sending to the unbound stream will be forwarded after to the real one
-			recp.unbounded_send(msg.clone()).unwrap();
-		}
-		
-		future::ok(())
+		// future::err(Error::Protocol(std::borrow::Cow::Borrowed("lol")))
 	});
 	// forwarding everything comming from the unbound stream to the real stream
 	let receive_from_others = rx.map(Ok).forward(ws_sender);

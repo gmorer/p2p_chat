@@ -16,6 +16,33 @@
 	13 - The caller calls RTCPeerConnection.setRemoteDescription() to set the answer as the remote description for its end of the call. It now knows the configuration of both peers. Media begins to flow as configured.
 */
 
+
+/*
+[0] : dleft --- left --- right --- dright ^^^^
+
+       { dleft --- [left] --- right --- dright
+[1] : {                   \
+	   { dleft --- left --- [right] --- dright ^^
+		
+
+	   { dleft --- [left] --- {right} --- dright
+	                       \
+[3] : {  dleft --- [left] -/- [right] --- dright // low geo test ( right and left ) when both are connected 
+                           \
+	   { dleft --- {left} --- [right] --- dright
+
+
+[client 1]                    [server]                     [client 2]
+  [data]
+	|----OfferSDP(data1, None)-->|                               |
+	|                            |---OfferSDP(data1, client1)--->| c2 store c1 // server OK
+	|                            |<--OfferSDP(data2, client1)---|             // server OK
+	|<-OfferSDP(data2, client2)-|                               | c1 store c2 // server OK
+	|-IceCandidate(client2)----->|                               |
+	|                            |----IceCandidate(client1)----->|
+	|                            |<---IceCandidate(client1)------|
+	|<---IceCandidate(client2)---|                               |
+
 // TODO real async/await communication protocol
 async fn handle_response() {
 

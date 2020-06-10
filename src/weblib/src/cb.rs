@@ -2,7 +2,11 @@ use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use web_sys::{ MessageEvent };
 use futures::channel::mpsc::UnboundedSender;
-// use crate::{ log, console_log };
+use js_sys::Uint8Array;
+
+use protocols::WebSocketData;
+
+use crate::{ log, console_log };
 use crate::streams::{ Event, Branch };
 
 #[allow(dead_code)]
@@ -18,10 +22,12 @@ impl CB {
 		let message_from_server = Closure::wrap(Box::new(move |msg :JsValue| {
 			let msg = msg.dyn_ref::<MessageEvent>()
 				.expect("not a message event")
-				.data()
-				.as_string()
-				.expect("Cannot convert to string");
-			sender1.unbounded_send(Event::Message(Branch::Server, msg));
+				.data();
+				// .as_string()
+				// .expect("Cannot convert to string");
+			let msg = Uint8Array::new(&msg).to_vec();
+			let msg = WebSocketData::from_u8(msg).expect("Cannot convert server response");
+			sender1.unbounded_send(Event::ServerMessage(Branch::Server, msg));
 		}) as Box<dyn FnMut(JsValue)>);
 		let sender2 = sender.clone();
 		let connected_from_server = Closure::wrap(Box::new(move || {

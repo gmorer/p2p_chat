@@ -3,8 +3,10 @@ use web_sys::{ WebSocket, window, BinaryType };
 use js_sys::Date;
 use futures::channel::mpsc::{ UnboundedSender };
 use wasm_bindgen::JsCast;
-use crate::cb::CB;
 
+use protocols::WebSocketData;
+
+use crate::cb::CB;
 use crate::{ log, console_log };
 use crate::html::{ MESSAGE_FIELD_ID, BUTTON_SEND_MESSAGE, get_input_value, set_input_value  };
 
@@ -50,7 +52,7 @@ pub enum Event {
 	Verification, // Created once evry xtime
 	Disconnect(Branch),
 	Connected(Branch),
-	Message(Branch, String), // TODO: Message struct
+	ServerMessage(Branch, WebSocketData), // TODO: Message struct
 	Html(String, JsValue) // event from html
 }
 
@@ -60,16 +62,23 @@ impl Event {
 			Event::Verification => console_log!("Getting verification"),
 			Event::Disconnect(branch) => Event::disconnect(socks, cb, branch),
 			Event::Connected(branch) => Event::connected(socks, branch),
-			Event::Message(branch, msg) => console_log!("Getting a message from {:?} : {}", branch, msg),
+			Event::ServerMessage(branch, msg) => console_log!("Getting a message from {:?} : {:?}", branch, msg),
 			Event::Html(id, msg) => Event::html(socks, id, msg)
 		};
 	}
+
+	// fn message(branch: Branch, msg) {
+	// 	match
+	// }
 
 	fn connected(socks: &mut Sockets, branch: Branch) {
 		console_log!("Connected: {:?}", branch);
 		match branch {
 			// Branch::Server => socks.server.state = State::Connected(42 as u64),
-			Branch::Server => socks.server.state = State::Connected(Date::new_0().get_time() as u64),
+			Branch::Server => {
+				socks.server.state = State::Connected(Date::new_0().get_time() as u64);
+				// if socks.	
+			},
 			_ => console_log!("Receveing connection from nowhere")
 		}
 	}
@@ -80,7 +89,8 @@ impl Event {
 				let msg = get_input_value(MESSAGE_FIELD_ID);
 				set_input_value(MESSAGE_FIELD_ID, "");
 				console_log!("need to send {}", msg);
-				socks.server.send(msg);
+				let msg = WebSocketData::Message(msg);
+				socks.server.send(msg.into_u8().expect("Cannot transform msg to binary"));
 			}
 			_=> console_log!("not handled html element: {}", id)
 		}
@@ -100,10 +110,10 @@ pub struct Pstream {
 }
 
 impl Pstream {
-	pub fn send(&self, data: String) {
+	pub fn send(&self, data: Vec<u8>) {
 		match self.state {
 			State::Disconnected(x) => console_log!("Cannot send, the client is disconnected since {:?}", x),
-			State::Connected(_) => { self.socket.as_ref().expect("connect but no socket, wtf").send_with_str(data.as_str()); },
+			State::Connected(_) => { self.socket.as_ref().expect("connect but no socket, wtf").send_with_u8_array(data.as_slice()); },
 			State::Waiting(x) => console_log!("Cannot send, we are waiting for answer since {}", x)
 		};
 	}
@@ -112,9 +122,9 @@ impl Pstream {
 // TODO all mutex
 pub struct Sockets {
 	pub server: Pstream,
-	// pub right: Option<Pstream>,
+	pub right: Option<Pstream>,
 	// pub dright: Option<Pstream>,
-	// pub left: Option<Pstream>,
+	pub left: Option<Pstream>,
 	// pub dleft: Option<Pstream>
 }
 
@@ -123,9 +133,9 @@ impl Sockets {
 		Sockets {
 			server: Pstream { state: State::Disconnected(None), socket: None },
 			// server: Some(Pstream::from_ws(server_ws)),
-			// right: None,
+			right: None,
 			// dright: None,
-			// left: None,
+			left: None,
 			// dleft: None
 		}
 	}

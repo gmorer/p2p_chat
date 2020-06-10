@@ -20,6 +20,7 @@ use futures::channel::mpsc::UnboundedSender;
 use tungstenite::protocol::Message;
 
 mod websocket;
+mod process;
 
 type Tx = UnboundedSender<Message>;
 type PeerMap = Arc<Mutex<HashMap<SocketAddr, Tx>>>;
