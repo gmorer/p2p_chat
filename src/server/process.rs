@@ -67,21 +67,40 @@ fn offer_sdp(addr: SocketAddr, paddr: Option<SocketAddr>, data: String, peers: &
 	};
 
 	let rsp = WebSocketData::OfferSDP(data, Some(addr));
-	let rsp = match rsp.into_u8() {
-		Ok(rsp) => Message::binary(rsp),
-		Err(e) => {
-			eprintln!("Error while creating data from msg: {}", e);
-			return None;
-		}
+	match rsp.into_u8() {
+		Ok(rsp) => { psender.unbounded_send(Message::binary(rsp)); },
+		Err(e) => eprintln!("Error while creating data from msg: {}", e)
 	};
-	psender.unbounded_send(rsp);
+	None
+}
+
+enum Type {
+	AnswerSDP,
+	IceCandidate
+}
+
+// function for both answerSDP and IceCandidate proxiing
+fn proxy(addr: SocketAddr, paddr: SocketAddr, data: String, peers: &PeerMap, typ: Type) -> Option<WebSocketData> {
+	let peers = peers.lock().unwrap();
+	let psender = peers.get(&paddr)?;
+
+	let msg = match typ {
+		Type::AnswerSDP => WebSocketData::AnswerSDP(data, addr),
+		Type::IceCandidate => WebSocketData::IceCandidate(data, addr)
+	};
+
+	match msg.into_u8() {
+		Ok(rsp) => { psender.unbounded_send(Message::Binary(rsp)); },
+		Err(e) => eprintln!("Error while creating data from msg: {}", e)
+	};
 	None
 }
 
 pub fn process(addr: SocketAddr, msg: WebSocketData, peers: &PeerMap) -> Option<WebSocketData> {
 	match msg {
 		WebSocketData::OfferSDP(data, paddr) => offer_sdp(addr , paddr, data, peers),
-		WebSocketData::IceCandidate(target) => None,
+		WebSocketData::AnswerSDP(data, paddr) => proxy(addr , paddr, data, peers, Type::AnswerSDP),
+		WebSocketData::IceCandidate(data, paddr) => proxy(addr , paddr, data, peers, Type::IceCandidate),
 		WebSocketData::Message(_) =>  broadcast_msg(msg, addr, peers)
 	}
 }

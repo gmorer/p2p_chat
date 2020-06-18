@@ -1,14 +1,14 @@
 use wasm_bindgen::prelude::*;
-use web_sys::{ WebSocket, window, BinaryType };
-use js_sys::Date;
+use web_sys::{ RtcPeerConnection, window, BinaryType };
 use futures::channel::mpsc::{ UnboundedSender };
 use wasm_bindgen::JsCast;
-
+use std::net::SocketAddr;
 use protocols::WebSocketData;
 
 use crate::cb::CB;
 use crate::{ log, console_log };
 use crate::html::{ MESSAGE_FIELD_ID, BUTTON_SEND_MESSAGE, get_input_value, set_input_value  };
+use crate::webrtc::{ create_rtc, incoming_offer };
 
 #[derive(Debug)]
 #[allow(dead_code)]
@@ -20,27 +20,19 @@ pub enum Branch {
 	Dleft
 }
 
-#[derive(Debug)]
-#[allow(dead_code)]
-pub enum State {
-	Disconnected(Option<u64>),
-	Connected(u64),
-	Waiting(u64),
-}
-
 fn reconnect_server(socks: &mut Sockets, cb: &CB) {
 	let socket_url = format!(
 		"ws://{}",
 		window().expect("Cannot get the window object").location().host().expect("cannot get the url")
 	);
 	console_log!("window location: {} ", socket_url);
-	match WebSocket::new(&socket_url) {
+	match web_sys::WebSocket::new(&socket_url) {
 		Ok(ws) => {
 			ws.set_binary_type(BinaryType::Arraybuffer);
 			ws.set_onopen(Some(cb.connected_from_server.as_ref().unchecked_ref()));
 			ws.set_onclose(Some(cb.disconnect_from_server.as_ref().unchecked_ref()));
 			ws.set_onmessage(Some(cb.message_from_server.as_ref().unchecked_ref()));
-			socks.server.socket = Some(ws);
+			socks.server.socket = Some(Socket::WebSocket(ws));
 		}
 		Err(e) => console_log!("Error while connecting the server socket: {:?}", e)
 	};
@@ -57,39 +49,48 @@ pub enum Event {
 }
 
 impl Event {
-	pub fn execute(self, sender: UnboundedSender<Event>, socks: &mut Sockets, cb: &CB) {
+	pub async fn execute(self, sender: UnboundedSender<Event>, socks: &mut Sockets, cb: &CB) {
 		match self {
 			Event::Verification => console_log!("Getting verification"),
 			Event::Disconnect(branch) => Event::disconnect(socks, cb, branch),
-			Event::Connected(branch) => Event::connected(socks, branch),
-			Event::ServerMessage(branch, msg) => Event::server_msg(socks, msg, branch),
+			Event::Connected(branch) => Event::connected(socks, branch).await,
+			Event::ServerMessage(branch, msg) => Event::server_msg(socks, msg, branch).await,
 			Event::Html(id, msg) => Event::html(socks, id, msg)
 		};
 	}
 
-	fn server_msg(socks: &mut Sockets, msg: WebSocketData, branch: Branch) {
-		console_log!("Getting a message from {:?} : {:?}", branch, msg);
+	async fn server_msg(socks: &mut Sockets, msg: WebSocketData, branch: Branch) {
 		match msg {
-			WebSocketData::OfferSDP(data, addr) => {
-				if (&data != "pong") { // TODO change this
-					let response = WebSocketData::OfferSDP("pong".to_string(), addr);
-					socks.server.send(response.into_u8().expect("error while transforming"));
-				}
+			WebSocketData::OfferSDP(sdp, Some(addr)) => {
+				incoming_offer(socks, &sdp, addr).await;
+				console_log!("receiveing OfferSDP: {} {:?}", sdp, addr);
+				// let rsp = WebSocketData::AnswerSDP("pong".to_string(), addr);
+				// socks.server.send(Data::WsData(rsp));
 			},
-			_ => {}
+			WebSocketData::AnswerSDP(sdp, addr) => {
+				console_log!("receiveing AnswerSDP: {} {:?}", sdp, addr);
+				// let rsp = WebSocketData::IceCandidate("data".to_string(), addr);
+				// socks.server.send(Data::WsData(rsp));
+			},
+			WebSocketData::IceCandidate(data, addr) => {
+				// dunno what to do
+				console_log!("receiveing IceCandidate: {} {:?}", data, addr);
+			},
+			_ => console_log!("Cannot handle from {:?} : {:?}", branch, msg)
 		};
 	}
 
-	fn connected(socks: &mut Sockets, branch: Branch) {
+	async fn connected(socks: &mut Sockets, branch: Branch) {
 		console_log!("Connected: {:?}", branch);
 		match branch {
 			// Branch::Server => socks.server.state = State::Connected(42 as u64),
 			Branch::Server => {
-				socks.server.state = State::Connected(Date::new_0().get_time() as u64);
-				if socks.right.is_none() && socks.left.is_none() { // add the others
+				socks.server.state = State::Connected(crate::time_now());
+				if socks.right.is_disconnected() && socks.left.is_disconnected() && socks.tmp.is_disconnected() { // add the others
+					create_rtc(socks, true).await;
 					// TODO webrtc data for the offer
-					let response = WebSocketData::OfferSDP("Test".to_string(), None);
-					socks.server.send(response.into_u8().expect("fking error"))
+					// let rsp = WebSocketData::OfferSDP("Test".to_string(), None);
+					// socks.server.send(Data::WsData(rsp));
 				}
 			},
 			_ => console_log!("Receveing connection from nowhere")
@@ -102,8 +103,8 @@ impl Event {
 				let msg = get_input_value(MESSAGE_FIELD_ID);
 				set_input_value(MESSAGE_FIELD_ID, "");
 				console_log!("need to send {}", msg);
-				let msg = WebSocketData::Message(msg);
-				socks.server.send(msg.into_u8().expect("Cannot transform msg to binary"));
+				let rsp = WebSocketData::Message(msg);
+				socks.server.send(Data::WsData(rsp));
 			}
 			_=> console_log!("not handled html element: {}", id)
 		}
@@ -117,28 +118,96 @@ impl Event {
 	}
 }
 
+pub enum Data {
+	WsData(WebSocketData),
+	RtcData(String)
+}
+
+pub enum Socket {
+	WebSocket(web_sys::WebSocket),
+	WebRTC(RtcPeerConnection)
+}
+
+#[derive(Debug, Copy, Clone)]
+#[allow(dead_code)]
+pub enum State {
+	Disconnected(Option<u64>), // should this exist
+	Connected(u64),
+	Locked(SocketAddr),
+	Waiting(u64),
+}
+
 pub struct Pstream {
 	pub state: State,
-	pub socket: Option<WebSocket>, // will be a trait with rtc, rtc or websocket
+	pub socket: Option<Socket>, // remove the public maybe
 }
 
 impl Pstream {
-	pub fn send(&self, data: Vec<u8>) {
+	pub fn send(&self, data: Data) {
 		match self.state {
-			State::Disconnected(x) => console_log!("Cannot send, the client is disconnected since {:?}", x),
-			State::Connected(_) => { self.socket.as_ref().expect("connect but no socket, wtf").send_with_u8_array(data.as_slice()); },
-			State::Waiting(x) => console_log!("Cannot send, we are waiting for answer since {}", x)
+			State::Disconnected(x) => { console_log!("Cannot send, the client is disconnected since {:?}", x); return },
+			State::Waiting(x) => { console_log!("Cannot send, we are waiting for answer since {}", x); return }
+			_ => ()
 		};
+		match (&self.socket, &data) {
+			(Some(Socket::WebSocket(socket)), Data::WsData(data)) => 
+				{ socket.send_with_u8_array(data.into_u8().expect("error while transforming").as_slice()); },
+			(Some(Socket::WebRTC(socket)), Data::RtcData(data)) =>
+				console_log!("dunno how to send with rtc"),
+			_ =>
+				console_log!("Invalid data type for websocket")
+		};
+	}
+
+	// Use those to know if an object is conencted or waiting, no the option
+	pub fn is_connected(&self) -> bool {
+		match self.state {
+			State::Connected(_) => {
+				if self.socket.is_none() {
+					console_log!("Socket connected but object is none");
+				}
+				true
+			},
+			_ => false
+		}
+	}
+
+	pub fn is_disconnected(&self) -> bool {
+		match self.state {
+			State::Disconnected(_) => true,
+			_ => false
+		}
+	}
+
+	pub fn is_waiting(&self) -> bool {
+		match self.state {
+			State::Waiting(_) => {
+				if self.socket.is_none() {
+					console_log!("socket waiting but object is none");
+				}
+				true
+			},
+			_ => false
+		}
+	}
+
+	pub fn is_locked(&self, paddr: Option<SocketAddr>) -> bool {
+		match (paddr, self.state) {
+			(Some(paddr), State::Locked(addr)) => paddr == addr,
+			(None, State::Locked(_)) => true,
+			_ => false
+		}
 	}
 }
 
 // TODO all mutex
 pub struct Sockets {
 	pub server: Pstream,
-	pub right: Option<Pstream>,
+	pub right: Pstream,
 	// pub dright: Option<Pstream>,
-	pub left: Option<Pstream>,
+	pub left: Pstream,
 	// pub dleft: Option<Pstream>
+	pub tmp: Pstream
 }
 
 impl Sockets {
@@ -146,9 +215,10 @@ impl Sockets {
 		Sockets {
 			server: Pstream { state: State::Disconnected(None), socket: None },
 			// server: Some(Pstream::from_ws(server_ws)),
-			right: None,
+			right: Pstream { state: State::Disconnected(None), socket: None},
 			// dright: None,
-			left: None,
+			left: Pstream { state: State::Disconnected(None), socket: None},
+			tmp: Pstream { state: State::Disconnected(None), socket: None}
 			// dleft: None
 		}
 	}

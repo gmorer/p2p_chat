@@ -8,8 +8,10 @@ use std::net::SocketAddr;
 #[derive(Serialize, Deserialize, Debug)]
 pub enum WebSocketData {
 	OfferSDP(String, Option<SocketAddr>),
-	IceCandidate(SocketAddr),
+	AnswerSDP(String, SocketAddr),
+	IceCandidate(String, SocketAddr),
 	Message(String), // For testing purpose
+	// TODO: whoami
 }
 
 impl WebSocketData {
