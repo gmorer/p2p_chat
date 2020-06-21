@@ -74,20 +74,10 @@ fn offer_sdp(addr: SocketAddr, paddr: Option<SocketAddr>, data: String, peers: &
 	None
 }
 
-enum Type {
-	AnswerSDP,
-	IceCandidate
-}
-
 // function for both answerSDP and IceCandidate proxiing
-fn proxy(addr: SocketAddr, paddr: SocketAddr, data: String, peers: &PeerMap, typ: Type) -> Option<WebSocketData> {
+fn proxy(paddr: SocketAddr, msg: WebSocketData, peers: &PeerMap) -> Option<WebSocketData> {
 	let peers = peers.lock().unwrap();
 	let psender = peers.get(&paddr)?;
-
-	let msg = match typ {
-		Type::AnswerSDP => WebSocketData::AnswerSDP(data, addr),
-		Type::IceCandidate => WebSocketData::IceCandidate(data, addr)
-	};
 
 	match msg.into_u8() {
 		Ok(rsp) => { psender.unbounded_send(Message::Binary(rsp)); },
@@ -99,8 +89,8 @@ fn proxy(addr: SocketAddr, paddr: SocketAddr, data: String, peers: &PeerMap, typ
 pub fn process(addr: SocketAddr, msg: WebSocketData, peers: &PeerMap) -> Option<WebSocketData> {
 	match msg {
 		WebSocketData::OfferSDP(data, paddr) => offer_sdp(addr , paddr, data, peers),
-		WebSocketData::AnswerSDP(data, paddr) => proxy(addr , paddr, data, peers, Type::AnswerSDP),
-		WebSocketData::IceCandidate(data, paddr) => proxy(addr , paddr, data, peers, Type::IceCandidate),
+		WebSocketData::AnswerSDP(data, paddr) => proxy(paddr, WebSocketData::AnswerSDP(data, addr), peers),
+		WebSocketData::IceCandidate(data, paddr) => proxy(paddr, WebSocketData::IceCandidate(data, addr), peers),
 		WebSocketData::Message(_) =>  broadcast_msg(msg, addr, peers)
 	}
 }

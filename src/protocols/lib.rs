@@ -4,12 +4,19 @@
 use serde::{Serialize, Deserialize};
 use std::net::SocketAddr;
 
+#[derive(Serialize, Deserialize, Debug)]
+pub struct IceCandidateStruct {
+	pub candidate: String,
+	pub sdp_mid: Option<String>,
+	pub sdp_m_line_index: Option<u16>
+}
+
 // Make it an enum ? (no method field)
 #[derive(Serialize, Deserialize, Debug)]
 pub enum WebSocketData {
 	OfferSDP(String, Option<SocketAddr>),
 	AnswerSDP(String, SocketAddr),
-	IceCandidate(String, SocketAddr),
+	IceCandidate(IceCandidateStruct, SocketAddr),
 	Message(String), // For testing purpose
 	// TODO: whoami
 }

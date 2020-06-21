@@ -14,7 +14,6 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 wasm-bindgen = { version = "0.2.63", features = ["serde-serialize"] }
 wasm-bindgen-futures = "0.4.13"
-serde = { version = "1.0", features = ["derive"] }
 js-sys = "0.3.40"
 p2p_chat = { path = "../..", default-features = false }
 futures = "0.3"
@@ -29,7 +28,13 @@ web-sys = { version = "0.3.40", features = [
 	"RtcPeerConnection",
 	"RtcConfiguration",
 	"RtcSessionDescriptionInit",
-	"RtcSdpType"
+	"RtcSdpType",
+	"RtcIceCandidate",
+	"RtcPeerConnectionIceEvent",
+	"RtcSignalingState",
+	"RtcDataChannel",
+	"RtcDataChannelEvent",
+	"RtcIceCandidateInit"
 ] }
 # The `console_error_panic_hook` crate provides better debugging of panics by
 # logging them with `console.error`. This is great for development, but requires

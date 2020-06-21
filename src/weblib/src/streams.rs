@@ -8,7 +8,7 @@ use protocols::WebSocketData;
 use crate::cb::CB;
 use crate::{ log, console_log };
 use crate::html::{ MESSAGE_FIELD_ID, BUTTON_SEND_MESSAGE, get_input_value, set_input_value  };
-use crate::webrtc::{ create_rtc, incoming_offer };
+use crate::webrtc::{ create_rtc, incoming_offer, incomming_answer, incomming_ice_candidate };
 
 #[derive(Debug)]
 #[allow(dead_code)]
@@ -69,12 +69,13 @@ impl Event {
 			},
 			WebSocketData::AnswerSDP(sdp, addr) => {
 				console_log!("receiveing AnswerSDP: {} {:?}", sdp, addr);
+				incomming_answer(socks, &sdp, addr).await;
 				// let rsp = WebSocketData::IceCandidate("data".to_string(), addr);
 				// socks.server.send(Data::WsData(rsp));
 			},
-			WebSocketData::IceCandidate(data, addr) => {
-				// dunno what to do
-				console_log!("receiveing IceCandidate: {} {:?}", data, addr);
+			WebSocketData::IceCandidate(candidate, addr) => {
+				console_log!("receiveing IceCandidate: {:?} {:?}", candidate, addr);
+				incomming_ice_candidate(socks, &candidate, addr).await;
 			},
 			_ => console_log!("Cannot handle from {:?} : {:?}", branch, msg)
 		};
@@ -122,7 +123,7 @@ pub enum Data {
 	WsData(WebSocketData),
 	RtcData(String)
 }
-
+#[derive(Clone)]
 pub enum Socket {
 	WebSocket(web_sys::WebSocket),
 	WebRTC(RtcPeerConnection)
@@ -137,6 +138,7 @@ pub enum State {
 	Waiting(u64),
 }
 
+#[derive(Clone)]
 pub struct Pstream {
 	pub state: State,
 	pub socket: Option<Socket>, // remove the public maybe
