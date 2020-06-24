@@ -1,12 +1,11 @@
 use wasm_bindgen::prelude::*;
 use web_sys::{ RtcPeerConnection, window, BinaryType };
-use futures::channel::mpsc::{ UnboundedSender };
 use wasm_bindgen::JsCast;
 use std::net::SocketAddr;
 use protocols::WebSocketData;
 
 use crate::cb::CB;
-use crate::{ log, console_log };
+use crate::{ log, console_log, Sender };
 use crate::html::{ MESSAGE_FIELD_ID, BUTTON_SEND_MESSAGE, get_input_value, set_input_value  };
 use crate::webrtc::{ create_rtc, incoming_offer, incomming_answer, incomming_ice_candidate };
 
@@ -49,7 +48,7 @@ pub enum Event {
 }
 
 impl Event {
-	pub async fn execute(self, sender: UnboundedSender<Event>, socks: &mut Sockets, cb: &CB) {
+	pub async fn execute(self, _sender: Sender, socks: &mut Sockets, cb: &CB) {
 		match self {
 			Event::Verification => console_log!("Getting verification"),
 			Event::Disconnect(branch) => Event::disconnect(socks, cb, branch),
@@ -63,18 +62,18 @@ impl Event {
 		match msg {
 			WebSocketData::OfferSDP(sdp, Some(addr)) => {
 				incoming_offer(socks, &sdp, addr).await;
-				console_log!("receiveing OfferSDP: {} {:?}", sdp, addr);
+				// console_log!("receiveing OfferSDP: {} {:?}", sdp, addr);
 				// let rsp = WebSocketData::AnswerSDP("pong".to_string(), addr);
 				// socks.server.send(Data::WsData(rsp));
 			},
 			WebSocketData::AnswerSDP(sdp, addr) => {
-				console_log!("receiveing AnswerSDP: {} {:?}", sdp, addr);
+				// console_log!("receiveing AnswerSDP: {} {:?}", sdp, addr);
 				incomming_answer(socks, &sdp, addr).await;
 				// let rsp = WebSocketData::IceCandidate("data".to_string(), addr);
 				// socks.server.send(Data::WsData(rsp));
 			},
 			WebSocketData::IceCandidate(candidate, addr) => {
-				console_log!("receiveing IceCandidate: {:?} {:?}", candidate, addr);
+				// console_log!("receiveing IceCandidate: {:?} {:?}", candidate, addr);
 				incomming_ice_candidate(socks, &candidate, addr).await;
 			},
 			_ => console_log!("Cannot handle from {:?} : {:?}", branch, msg)

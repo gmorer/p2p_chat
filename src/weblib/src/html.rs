@@ -1,8 +1,8 @@
-use futures::channel::mpsc::UnboundedSender;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use web_sys::{ Document, HtmlElement, window, HtmlInputElement };
 use crate::streams::{ Event };
+use crate::Sender;
 
 
 pub const BUTTON_SEND_MESSAGE: &'static str = "send_message";
@@ -36,9 +36,9 @@ pub fn set_input_value(id: &str, value: &str) {
 }
 
 // Setup a on click event, the id and the msg will be send to the stream
-fn on_click(document: &Document, id: &'static str, sender: UnboundedSender<Event>) {
+fn on_click(document: &Document, id: &'static str, sender: Sender) {
 	let open_handler =  Closure::wrap(Box::new(move |msg| {
-		sender.unbounded_send(Event::Html(id.to_string(), msg));
+		sender.send(Event::Html(id.to_string(), msg));
 	}) as Box<dyn FnMut(JsValue)>);
 	document
 		.get_element_by_id(id)
@@ -51,9 +51,8 @@ fn on_click(document: &Document, id: &'static str, sender: UnboundedSender<Event
 
 }
 
-pub fn connect_html(sender: UnboundedSender<Event>) {
+pub fn connect_html(sender: Sender) {
 	let window = window().expect("Cannot get the window object");
 	let document = window.document().expect("window should have a document");
-	let sender1 = sender.clone();
 	on_click(&document, BUTTON_SEND_MESSAGE, sender);
 }
