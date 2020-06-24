@@ -33,13 +33,6 @@ pub async fn create_rtc(socks: &mut Sockets, should_send: bool) -> Result<(), Js
 	let obj = JSON::parse(ICE_SERVERS)?;
 	conf.ice_servers(&obj);
 	let peer_connection = RtcPeerConnection::new_with_configuration(&conf)?;
-	
-	/* set the local offer */
-	let offer = Reflect::get(&JsFuture::from(peer_connection.create_offer()).await?, &JsValue::from_str("sdp"))?
-		.as_string().ok_or(JsValue::from_str("No sdp in the offer"))?;
-	let mut offer_obj = RtcSessionDescriptionInit::new(RtcSdpType::Offer);
-	offer_obj.sdp(&offer);
-	JsFuture::from(peer_connection.set_local_description(&offer_obj)).await?;
 
 	/* Create the Data Channel */
 	let data_channel = peer_connection.create_data_channel("my-data-channel");
@@ -67,6 +60,12 @@ pub async fn create_rtc(socks: &mut Sockets, should_send: bool) -> Result<(), Js
 	data_channel.set_onopen(Some(cb.as_ref().unchecked_ref()));
 	cb.forget();
 	
+	/* set the local offer */
+	let offer = Reflect::get(&JsFuture::from(peer_connection.create_offer()).await?, &JsValue::from_str("sdp"))?
+	.as_string().ok_or(JsValue::from_str("No sdp in the offer"))?;
+	let mut offer_obj = RtcSessionDescriptionInit::new(RtcSdpType::Offer);
+	offer_obj.sdp(&offer);
+	JsFuture::from(peer_connection.set_local_description(&offer_obj)).await?;
 	if should_send {
 		let message = WebSocketData::OfferSDP(offer, None);
 		socks.server.send(Data::WsData(message));
