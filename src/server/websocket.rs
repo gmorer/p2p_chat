@@ -53,7 +53,7 @@ async fn upgrade(peers: PeerMap, addr: SocketAddr, upgraded: Upgraded) {
 			};
 			// TODO: remove those warning
 			match peers.lock().unwrap().get(&addr) {
-				Some(sender) => sender.unbounded_send(rsp),
+				Some(sender) => { sender.unbounded_send(rsp); },
 				None => {
 					eprintln!("Cannot a reply to a phantom");
 					return future::err(Error::Protocol(std::borrow::Cow::Borrowed("Internal Error")));

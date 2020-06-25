@@ -66,7 +66,9 @@ async fn main_loop() {
 	So we use the while loop
 	*/
 	while let Some(e) = receiver.next().await {
-		e.execute(sender.clone(), &mut socks, &cb).await;
+		if let Err(e) = e.execute(sender.clone(), &mut socks, &cb).await {
+			console_log!("Execution error: {}", e);
+		}
 	}
 	console_log!("This should not be reachable")
 }

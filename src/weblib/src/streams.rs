@@ -1,5 +1,5 @@
 use wasm_bindgen::prelude::*;
-use web_sys::{ RtcPeerConnection, window, BinaryType };
+use web_sys::{ window, BinaryType };
 use wasm_bindgen::JsCast;
 use std::net::SocketAddr;
 use protocols::WebSocketData;
@@ -7,7 +7,7 @@ use protocols::WebSocketData;
 use crate::cb::CB;
 use crate::{ log, console_log, Sender };
 use crate::html::{ MESSAGE_FIELD_ID, BUTTON_SEND_MESSAGE, get_input_value, set_input_value  };
-use crate::webrtc::{ create_rtc, incoming_offer, incomming_answer, incomming_ice_candidate };
+use crate::webrtc::RTCSocket;
 
 #[derive(Debug)]
 #[allow(dead_code)]
@@ -19,7 +19,7 @@ pub enum Branch {
 	Dleft
 }
 
-fn reconnect_server(socks: &mut Sockets, cb: &CB) {
+fn reconnect_server(socks: &mut Sockets, cb: &CB) -> Result<(), String> {
 	let socket_url = format!(
 		"ws://{}",
 		window().expect("Cannot get the window object").location().host().expect("cannot get the url")
@@ -32,9 +32,10 @@ fn reconnect_server(socks: &mut Sockets, cb: &CB) {
 			ws.set_onclose(Some(cb.disconnect_from_server.as_ref().unchecked_ref()));
 			ws.set_onmessage(Some(cb.message_from_server.as_ref().unchecked_ref()));
 			socks.server.socket = Some(Socket::WebSocket(ws));
+			Ok(())
 		}
-		Err(e) => console_log!("Error while connecting the server socket: {:?}", e)
-	};
+		Err(e) => Err(format!("Error while connecting the server socket: {:?}", e))
+	}
 }
 
 #[derive(Debug)]
@@ -48,56 +49,78 @@ pub enum Event {
 }
 
 impl Event {
-	pub async fn execute(self, _sender: Sender, socks: &mut Sockets, cb: &CB) {
+	pub async fn execute(self, _sender: Sender, socks: &mut Sockets, cb: &CB) -> Result<(), String>{
 		match self {
-			Event::Verification => console_log!("Getting verification"),
+			Event::Verification => Err("Getting verification".to_string()),
 			Event::Disconnect(branch) => Event::disconnect(socks, cb, branch),
 			Event::Connected(branch) => Event::connected(socks, branch).await,
 			Event::ServerMessage(branch, msg) => Event::server_msg(socks, msg, branch).await,
 			Event::Html(id, msg) => Event::html(socks, id, msg)
-		};
+		}
 	}
 
-	async fn server_msg(socks: &mut Sockets, msg: WebSocketData, branch: Branch) {
+	async fn server_msg(socks: &mut Sockets, msg: WebSocketData, branch: Branch) -> Result<(), String> {
 		match msg {
 			WebSocketData::OfferSDP(sdp, Some(addr)) => {
-				incoming_offer(socks, &sdp, addr).await;
-				// console_log!("receiveing OfferSDP: {} {:?}", sdp, addr);
-				// let rsp = WebSocketData::AnswerSDP("pong".to_string(), addr);
-				// socks.server.send(Data::WsData(rsp));
+				if socks.tmp.is_connected() || socks.tmp.is_locked(None) { // rly None ?
+					return Err("Icoming SDP but tmp socket already taken and active (should be moved to a non temporary place".to_string());
+				}
+				if let Some(Socket::WebRTC(socket)) = &socks.tmp.socket {
+					socket.offer(&socks.server, &sdp, addr).await.map_err(|e| format!("{:?}", e))?
+				} else {
+					let socket = RTCSocket::new(&socks.server, false).await.map_err(|e| format!("{:?}", e))?;
+					socket.offer(&socks.server, &sdp, addr).await.map_err(|e| format!("{:?}", e))?;
+					socks.tmp.socket = Some(Socket::WebRTC(socket))
+				}
+				socks.tmp.state = State::Locked(addr);
+				Ok(())
 			},
 			WebSocketData::AnswerSDP(sdp, addr) => {
-				// console_log!("receiveing AnswerSDP: {} {:?}", sdp, addr);
-				incomming_answer(socks, &sdp, addr).await;
-				// let rsp = WebSocketData::IceCandidate("data".to_string(), addr);
-				// socks.server.send(Data::WsData(rsp));
+				if socks.tmp.is_locked(None) {
+					return Err("The socket is locked".to_string());
+				}
+				if let Some(Socket::WebRTC(socket)) = &socks.tmp.socket {
+					socket.answer(&socks.server, &sdp, addr).await.map_err(|e| format!("{:?}", e))?;
+					socks.tmp.state = State::Locked(addr);
+					Ok(())
+				} else {
+					Err("No soclet object".to_string())
+				}
 			},
 			WebSocketData::IceCandidate(candidate, addr) => {
+				if !socks.tmp.is_locked(Some(addr)) {
+					return Err(format!("The socket should be locked"));
+				}
+				if let Some(Socket::WebRTC(socket)) = &socks.tmp.socket {
+					socket.ice_candidate(&candidate).await.map_err(|e| format!("{:?}", e))
+				} else {
+					Err("No soclet object".to_string())
+				}
 				// console_log!("receiveing IceCandidate: {:?} {:?}", candidate, addr);
-				incomming_ice_candidate(socks, &candidate, addr).await;
+				// incomming_ice_candidate(socks, &candidate, addr).await;
 			},
-			_ => console_log!("Cannot handle from {:?} : {:?}", branch, msg)
-		};
+			_ => Err(format!("Cannot handle from {:?} : {:?}", branch, msg))
+		}
 	}
 
-	async fn connected(socks: &mut Sockets, branch: Branch) {
+	async fn connected(socks: &mut Sockets, branch: Branch) -> Result<(), String> {
 		console_log!("Connected: {:?}", branch);
 		match branch {
 			// Branch::Server => socks.server.state = State::Connected(42 as u64),
 			Branch::Server => {
 				socks.server.state = State::Connected(crate::time_now());
 				if socks.right.is_disconnected() && socks.left.is_disconnected() && socks.tmp.is_disconnected() { // add the others
-					create_rtc(socks, true).await;
-					// TODO webrtc data for the offer
-					// let rsp = WebSocketData::OfferSDP("Test".to_string(), None);
-					// socks.server.send(Data::WsData(rsp));
-				}
+					match RTCSocket::new(&socks.server, true).await {
+						Ok(socket) => { socks.tmp.socket = Some(Socket::WebRTC(socket)); Ok(()) },
+						Err(e) => Err(format!("Error while creating socket: {:?}", e))
+					}
+				} else { Ok(()) }
 			},
-			_ => console_log!("Receveing connection from nowhere")
+			_ => Err("Receveing connection from nowhere".to_string())
 		}
 	}
 
-	fn html(socks: &Sockets, id: String, msg: JsValue) {
+	fn html(socks: &Sockets, id: String, msg: JsValue) -> Result<(), String> {
 		match id.as_str() {
 			BUTTON_SEND_MESSAGE => {
 				let msg = get_input_value(MESSAGE_FIELD_ID);
@@ -105,16 +128,17 @@ impl Event {
 				console_log!("need to send {}", msg);
 				let rsp = WebSocketData::Message(msg);
 				socks.server.send(Data::WsData(rsp));
+				Ok(())
 			}
-			_=> console_log!("not handled html element: {}", id)
+			_=> Err(format!("not handled html element: id={} msg={:?}", id, msg))
 		}
 	}
 
-	fn disconnect(socks: &mut Sockets, cb: &CB, branch: Branch) {
+	fn disconnect(socks: &mut Sockets, cb: &CB, branch: Branch) -> Result<(), String> {
 		match branch {
 			Branch::Server => reconnect_server(socks, cb),
-			_ => console_log!("unsupported disconnect branch: {:?}", branch)
-		};
+			_ => Err(format!("unsupported disconnect branch: {:?}", branch))
+		}
 	}
 }
 
@@ -125,7 +149,7 @@ pub enum Data {
 #[derive(Clone)]
 pub enum Socket {
 	WebSocket(web_sys::WebSocket),
-	WebRTC(RtcPeerConnection)
+	WebRTC(RTCSocket)
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -152,9 +176,11 @@ impl Pstream {
 		};
 		match (&self.socket, &data) {
 			(Some(Socket::WebSocket(socket)), Data::WsData(data)) => 
-				{ socket.send_with_u8_array(data.into_u8().expect("error while transforming").as_slice()); },
+				{ if let Err(e) = socket.send_with_u8_array(data.into_u8().expect("error while transforming").as_slice()) {
+					console_log!("Error while sending to server: {:?}", e)
+				}},
 			(Some(Socket::WebRTC(socket)), Data::RtcData(data)) =>
-				console_log!("dunno how to send with rtc"),
+				socket.send(&data),
 			_ =>
 				console_log!("Invalid data type for websocket")
 		};

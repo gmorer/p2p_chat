@@ -5,7 +5,8 @@ use js_sys::Uint8Array;
 
 use protocols::WebSocketData;
 
-use crate::{ log, console_log, Sender };
+// use crate::{ log, console_log };
+use crate::Sender;
 use crate::streams::{ Event, Branch };
 
 #[allow(dead_code)]

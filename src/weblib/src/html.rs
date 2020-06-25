@@ -32,7 +32,7 @@ pub fn set_input_value(id: &str, value: &str) {
 		let input = input
 		.dyn_ref::<HtmlInputElement>()
 		.expect("Input is not an input");
-	input.set_value("");
+	input.set_value(value);
 }
 
 // Setup a on click event, the id and the msg will be send to the stream

@@ -9,7 +9,6 @@ use std::path::Path;
 use std::ffi::OsStr;
 use tokio::fs::File;
 use tokio_util::codec::{BytesCodec, FramedRead};
-use protocols::WebSocketData;
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{Body, Request, Response, Server, StatusCode};
 use hyper::header::{HeaderValue, UPGRADE};
