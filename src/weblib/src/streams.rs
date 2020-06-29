@@ -1,5 +1,5 @@
 use wasm_bindgen::prelude::*;
-use web_sys::{ window, BinaryType };
+use web_sys::{ window, BinaryType, RtcDataChannel };
 use wasm_bindgen::JsCast;
 use std::net::SocketAddr;
 use protocols::WebSocketData;
@@ -45,31 +45,42 @@ pub enum Event {
 	Disconnect(Branch),
 	Connected(Branch),
 	ServerMessage(Branch, WebSocketData), // TODO: Message struct
-	Html(String, JsValue) // event from html
+	Html(String, JsValue), // event from html
+	// RtcMessage(SocketAddr, String),
+	DCObj(RtcDataChannel)
 }
 
 impl Event {
-	pub async fn execute(self, _sender: Sender, socks: &mut Sockets, cb: &CB) -> Result<(), String>{
+	pub async fn execute(self, sender: Sender, socks: &mut Sockets, cb: &CB) -> Result<(), String>{
 		match self {
 			Event::Verification => Err("Getting verification".to_string()),
 			Event::Disconnect(branch) => Event::disconnect(socks, cb, branch),
 			Event::Connected(branch) => Event::connected(socks, branch).await,
-			Event::ServerMessage(branch, msg) => Event::server_msg(socks, msg, branch).await,
-			Event::Html(id, msg) => Event::html(socks, id, msg)
+			Event::ServerMessage(branch, msg) => Event::server_msg(socks, sender, msg, branch).await,
+			Event::Html(id, msg) => Event::html(socks, id, msg),
+			Event::DCObj(dc) => Event::dcobj(socks, dc)
 		}
 	}
 
-	async fn server_msg(socks: &mut Sockets, msg: WebSocketData, branch: Branch) -> Result<(), String> {
+	fn dcobj(socks: &mut Sockets, dc: RtcDataChannel) -> Result<(), String> {
+		match (socks.tmp.state, &mut socks.tmp.socket) {
+			(State::Locked(addr), Some(Socket::WebRTC(socket)))
+			=> socket.set_dc(dc, addr).map_err(|e| format!("Error while setting dc: {:?}", e)),
+			_ => Err("Receiving dc obj but tmp isnt locked with an addr".to_string())
+		}
+	}
+
+	async fn server_msg(socks: &mut Sockets, sender: Sender, msg: WebSocketData, branch: Branch) -> Result<(), String> {
 		match msg {
 			WebSocketData::OfferSDP(sdp, Some(addr)) => {
 				if socks.tmp.is_connected() || socks.tmp.is_locked(None) { // rly None ?
 					return Err("Icoming SDP but tmp socket already taken and active (should be moved to a non temporary place".to_string());
 				}
 				if let Some(Socket::WebRTC(socket)) = &socks.tmp.socket {
-					socket.offer(&socks.server, &sdp, addr).await.map_err(|e| format!("{:?}", e))?
+					socket.offer(&socks.server, &sdp, addr, sender).await.map_err(|e| format!("{:?}", e))?
 				} else {
 					let socket = RTCSocket::new(&socks.server, false).await.map_err(|e| format!("{:?}", e))?;
-					socket.offer(&socks.server, &sdp, addr).await.map_err(|e| format!("{:?}", e))?;
+					socket.offer(&socks.server, &sdp, addr, sender).await.map_err(|e| format!("{:?}", e))?;
 					socks.tmp.socket = Some(Socket::WebRTC(socket))
 				}
 				socks.tmp.state = State::Locked(addr);
@@ -126,8 +137,9 @@ impl Event {
 				let msg = get_input_value(MESSAGE_FIELD_ID);
 				set_input_value(MESSAGE_FIELD_ID, "");
 				console_log!("need to send {}", msg);
-				let rsp = WebSocketData::Message(msg);
-				socks.server.send(Data::WsData(rsp));
+				// let rsp = WebSocketData::Message(msg);
+				// socks.server.send(Data::WsData(rsp));
+				socks.tmp.send(Data::RtcData(msg));
 				Ok(())
 			}
 			_=> Err(format!("not handled html element: id={} msg={:?}", id, msg))

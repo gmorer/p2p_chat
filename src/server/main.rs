@@ -25,7 +25,8 @@ type Tx = UnboundedSender<Message>;
 type PeerMap = Arc<Mutex<HashMap<SocketAddr, Tx>>>;
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
-const ADDR: &str = "127.0.0.1:8088";
+// const ADDR: &str = "127.0.0.1:8088";
+const ADDR: &str = "[::1]:8088";
 const STATIC_FOLDER: &str = "./static/";
 
 async fn shutdown_signal() {

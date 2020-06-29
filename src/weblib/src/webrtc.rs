@@ -16,8 +16,8 @@ use web_sys::{
 };
 use wasm_bindgen_futures::JsFuture;
 use protocols::{ WebSocketData, IceCandidateStruct };
-use crate::{ log, console_log };
-use crate::streams::{ Data, Pstream };
+use crate::{ log, console_log, Sender };
+use crate::streams::{ Data, Pstream, Event };
 
 // Doc:
 // https://developer.mozilla.org/en-US/docs/Web/API/WebRTC_API/Connectivity
@@ -44,6 +44,7 @@ impl RTCSocket {
 		conf.ice_servers(&obj);
 		let peer_connection = RtcPeerConnection::new_with_configuration(&conf)?;
 
+		// TODO: move the data channel creation
 		/* Create the Data Channel */
 		let data_channel = peer_connection.create_data_channel("my-data-channel");
 		let dc_clone = data_channel.clone();
@@ -59,16 +60,6 @@ impl RTCSocket {
 			);
 		data_channel.set_onmessage(Some(onmessage_callback.as_ref().unchecked_ref()));
 		onmessage_callback.forget();
-		let cb = Closure::wrap(Box::new(move || {
-			console_log!("Connection close");
-		}) as Box<dyn FnMut()>);
-		data_channel.set_onclose(Some(cb.as_ref().unchecked_ref()));
-		cb.forget();
-		let cb = Closure::wrap(Box::new(move || {
-			console_log!("Connection open");
-		}) as Box<dyn FnMut()>);
-		data_channel.set_onopen(Some(cb.as_ref().unchecked_ref()));
-		cb.forget();
 
 		/* set the local offer */
 		let offer = Reflect::get(&JsFuture::from(peer_connection.create_offer()).await?, &JsValue::from_str("sdp"))?
@@ -86,7 +77,7 @@ impl RTCSocket {
 		})
 	}
 	
-	pub async fn offer(&self, server: &Pstream, sdp: &String, addr: SocketAddr) -> Result<(), JsValue> {
+	pub async fn offer(&self, server: &Pstream, sdp: &String, addr: SocketAddr, sender: Sender) -> Result<(), JsValue> {
 		/* Set Remote offer description */
 		let mut description = RtcSessionDescriptionInit::new(RtcSdpType::Offer);
 		description.sdp(sdp.as_str());
@@ -120,18 +111,20 @@ impl RTCSocket {
 		/* Handle OK connection */
 		// TODO: put this in createRTC
 		let ondatachannel_callback = Closure::wrap(Box::new(move |ev: RtcDataChannelEvent| {
-			let data_channel = ev.channel();
-			let onmessage_callback =
-				Closure::wrap(
-					Box::new(move |ev: MessageEvent| match ev.data().as_string() {
-						Some(message) => console_log!("receveing {:?}", message),
-						None => {}
-					}) as Box<dyn FnMut(MessageEvent)>,
-				);
-			data_channel.set_onmessage(Some(onmessage_callback.as_ref().unchecked_ref()));
-			onmessage_callback.forget();
+			sender.send(Event::DCObj(ev.channel()))
+			// let data_channel = ev.channel();
+			// sender.send(Event::DCObj)
+			// let onmessage_callback =
+			// 	Closure::wrap(
+			// 		Box::new(move |ev: MessageEvent| match ev.data().as_string() {
+			// 			Some(message) => sender.send(Event::RtcMessage(addr, message)),
+			// 			None => {}
+			// 		}) as Box<dyn FnMut(MessageEvent)>,
+			// 	);
+			// data_channel.set_onmessage(Some(onmessage_callback.as_ref().unchecked_ref()));
+			// onmessage_callback.forget();
 
-			data_channel.send_with_str("Ping from pc2.dc!").unwrap();
+			// data_channel.send_with_str("Ping from pc2.dc!").unwrap();
 		}) as Box<dyn FnMut(RtcDataChannelEvent)>);
 		self.conn.set_ondatachannel(Some(ondatachannel_callback.as_ref().unchecked_ref()));
 		ondatachannel_callback.forget();
@@ -158,6 +151,16 @@ impl RTCSocket {
 		}) as Box<dyn FnMut(RtcPeerConnectionIceEvent)>);
 		self.conn.set_onicecandidate(Some(cb.as_ref().unchecked_ref()));
 		cb.forget();
+		let cb = Closure::wrap(Box::new(move || {
+			console_log!("Connection close");
+		}) as Box<dyn FnMut()>);
+		self.channel.set_onclose(Some(cb.as_ref().unchecked_ref()));
+		cb.forget();
+		let cb = Closure::wrap(Box::new(move || {
+			console_log!("Connection open");
+		}) as Box<dyn FnMut()>);
+		self.channel.set_onopen(Some(cb.as_ref().unchecked_ref()));
+		cb.forget();
 		Ok(())
 	}
 
@@ -170,6 +173,33 @@ impl RTCSocket {
 	
 		let candidate = RtcIceCandidate::new(&icecandidate)?;
 		JsFuture::from(self.conn.add_ice_candidate_with_opt_rtc_ice_candidate(Some(&candidate))).await?;
+		Ok(())
+	}
+
+	pub fn set_dc(&mut self, dc: RtcDataChannel, addr: SocketAddr) -> Result<(), JsValue> {
+		let onmessage_callback =
+			Closure::wrap(
+				Box::new(move |ev: MessageEvent| match ev.data().as_string() {
+					Some(message) => console_log!("Receiving: {:?}", message),
+					None => {}
+				}) as Box<dyn FnMut(MessageEvent)>,
+			);
+		dc.set_onmessage(Some(onmessage_callback.as_ref().unchecked_ref()));
+		onmessage_callback.forget();
+
+		let cb = Closure::wrap(Box::new(move || {
+			console_log!("Connection close");
+		}) as Box<dyn FnMut()>);
+		dc.set_onclose(Some(cb.as_ref().unchecked_ref()));
+		cb.forget();
+		
+		dc.send_with_str("Ping from pc2.dc!").unwrap();
+		let cb = Closure::wrap(Box::new(move || {
+			console_log!("Connection open");
+		}) as Box<dyn FnMut()>);
+		dc.set_onopen(Some(cb.as_ref().unchecked_ref()));
+		cb.forget();
+		self.channel = dc;
 		Ok(())
 	}
 }
