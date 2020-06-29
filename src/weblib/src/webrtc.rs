@@ -1,6 +1,6 @@
 use std::net::SocketAddr;
 use wasm_bindgen::{ JsValue, JsCast };
-use wasm_bindgen::prelude::*;
+use wasm_bindgen::closure::Closure;
 use js_sys::{ JSON, Reflect };
 use web_sys::{
 	MessageEvent,
@@ -24,10 +24,21 @@ use crate::streams::{ Data, Pstream, Event };
 
 const ICE_SERVERS: &str = "[{\"urls\": \"stun:stun.l.google.com:19302\"}]";
 
-#[derive(Clone)]
+// #[derive(Clone)]
 pub struct RTCSocket {
 	conn: RtcPeerConnection,
-	channel: RtcDataChannel
+	channel: RtcDataChannel,
+	cbs: Vec<Closure<dyn FnMut (JsValue)>> // keep the callbacks in memory
+}
+
+impl Clone for RTCSocket {
+	fn clone(&self) -> Self {
+		Self {
+			conn: self.conn.clone(),
+			channel: self.channel.clone(),
+			cbs: vec!() // callbacks need to be in online one place
+		}
+	}
 }
 
 impl RTCSocket {
@@ -38,28 +49,31 @@ impl RTCSocket {
 	}
 
 	pub async fn new(server: &Pstream, should_send: bool) -> Result<Self, JsValue> {
+		let mut cbs = vec!();
 		/* Create the RtcPeerConnection struct */
 		let mut conf = RtcConfiguration::new();
 		let obj = JSON::parse(ICE_SERVERS)?;
 		conf.ice_servers(&obj);
 		let peer_connection = RtcPeerConnection::new_with_configuration(&conf)?;
 
-		// TODO: move the data channel creation
 		/* Create the Data Channel */
 		let data_channel = peer_connection.create_data_channel("my-data-channel");
 		let dc_clone = data_channel.clone();
 		let onmessage_callback =
-			Closure::wrap(
-				Box::new(move |ev: MessageEvent| match ev.data().as_string() {
+		Closure::wrap(
+			Box::new(move |ev: JsValue| {
+				let ev = MessageEvent::from(ev);
+				match ev.data().as_string() {
 					Some(message) => {
 						console_log!("receving: {:?}", message);
 						dc_clone.send_with_str("Pong from pc1.dc!").unwrap();
 					}
 					None => {}
-				}) as Box<dyn FnMut(MessageEvent)>,
-			);
+				}
+			}) as Box<dyn FnMut(JsValue)>,
+		);
 		data_channel.set_onmessage(Some(onmessage_callback.as_ref().unchecked_ref()));
-		onmessage_callback.forget();
+		cbs.push(onmessage_callback);
 
 		/* set the local offer */
 		let offer = Reflect::get(&JsFuture::from(peer_connection.create_offer()).await?, &JsValue::from_str("sdp"))?
@@ -73,11 +87,12 @@ impl RTCSocket {
 		}
 		Ok(RTCSocket {
 			conn: peer_connection,
-			channel: data_channel
+			channel: data_channel,
+			cbs
 		})
 	}
 	
-	pub async fn offer(&self, server: &Pstream, sdp: &String, addr: SocketAddr, sender: Sender) -> Result<(), JsValue> {
+	pub async fn offer(&mut self, server: &Pstream, sdp: &String, addr: SocketAddr, sender: Sender) -> Result<(), JsValue> {
 		/* Set Remote offer description */
 		let mut description = RtcSessionDescriptionInit::new(RtcSdpType::Offer);
 		description.sdp(sdp.as_str());
@@ -93,24 +108,28 @@ impl RTCSocket {
 
 		/* Handle ice candidate */
 		let server = server.clone();
-		let cb = Closure::wrap(Box::new(move |ev: RtcPeerConnectionIceEvent| match ev.candidate() {
-			Some(candidate) => {
-				let candidate = IceCandidateStruct {
-					candidate: candidate.candidate(),
-					sdp_mid: candidate.sdp_mid(),
-					sdp_m_line_index: candidate.sdp_m_line_index()
-				};
-				let message = WebSocketData::IceCandidate(candidate, addr);
-				server.send(Data::WsData(message));
-			},
-			None => {}
-		}) as Box<dyn FnMut(RtcPeerConnectionIceEvent)>);
+		let cb = Closure::wrap(Box::new(move |ev: JsValue| {
+			let ev = RtcPeerConnectionIceEvent::from(ev);
+			match ev.candidate() {
+				Some(candidate) => {
+					let candidate = IceCandidateStruct {
+						candidate: candidate.candidate(),
+						sdp_mid: candidate.sdp_mid(),
+						sdp_m_line_index: candidate.sdp_m_line_index()
+					};
+					let message = WebSocketData::IceCandidate(candidate, addr);
+					server.send(Data::WsData(message));
+				},
+				None => {}
+			}
+		}) as Box<dyn FnMut(JsValue)>);
 		self.conn.set_onicecandidate(Some(cb.as_ref().unchecked_ref()));
-		cb.forget();
+		self.cbs.push(cb);
 
 		/* Handle OK connection */
 		// TODO: put this in createRTC
-		let ondatachannel_callback = Closure::wrap(Box::new(move |ev: RtcDataChannelEvent| {
+		let ondatachannel_callback = Closure::wrap(Box::new(move |ev: JsValue| {
+			let ev = RtcDataChannelEvent::from(ev);
 			sender.send(Event::DCObj(ev.channel()))
 			// let data_channel = ev.channel();
 			// sender.send(Event::DCObj)
@@ -125,42 +144,45 @@ impl RTCSocket {
 			// onmessage_callback.forget();
 
 			// data_channel.send_with_str("Ping from pc2.dc!").unwrap();
-		}) as Box<dyn FnMut(RtcDataChannelEvent)>);
+		}) as Box<dyn FnMut(JsValue)>);
 		self.conn.set_ondatachannel(Some(ondatachannel_callback.as_ref().unchecked_ref()));
-		ondatachannel_callback.forget();
+		self.cbs.push(ondatachannel_callback);
 		Ok(())
 	}
 
-	pub async fn answer(&self, server: &Pstream, sdp: &String, addr: SocketAddr) -> Result<(), JsValue> {
+	pub async fn answer(&mut self, server: &Pstream, sdp: &String, addr: SocketAddr) -> Result<(), JsValue> {
 		let mut answer_obj = RtcSessionDescriptionInit::new(RtcSdpType::Answer);
 		answer_obj.sdp(sdp.as_str());
 		JsFuture::from(self.conn.set_remote_description(&answer_obj)).await?;
 		/* Handle ice candidate */
 		let server = server.clone();
-		let cb = Closure::wrap(Box::new(move |ev: RtcPeerConnectionIceEvent| match ev.candidate() {
-			Some(candidate) => {
-				let candidate = IceCandidateStruct {
-					candidate: candidate.candidate(),
-					sdp_mid: candidate.sdp_mid(),
-					sdp_m_line_index: candidate.sdp_m_line_index()
-				};
-				let message = WebSocketData::IceCandidate(candidate, addr);
-				server.send(Data::WsData(message));
-			},
-			None => {}
-		}) as Box<dyn FnMut(RtcPeerConnectionIceEvent)>);
+		let cb = Closure::wrap(Box::new(move |ev: JsValue| {
+			let ev = RtcPeerConnectionIceEvent::from(ev);
+			match ev.candidate() {
+				Some(candidate) => {
+					let candidate = IceCandidateStruct {
+						candidate: candidate.candidate(),
+						sdp_mid: candidate.sdp_mid(),
+						sdp_m_line_index: candidate.sdp_m_line_index()
+					};
+					let message = WebSocketData::IceCandidate(candidate, addr);
+					server.send(Data::WsData(message));
+				},
+				None => {}
+			}
+		}) as Box<dyn FnMut(JsValue)>);
 		self.conn.set_onicecandidate(Some(cb.as_ref().unchecked_ref()));
-		cb.forget();
-		let cb = Closure::wrap(Box::new(move || {
+		self.cbs.push(cb);
+		let cb = Closure::wrap(Box::new(move |_arg: JsValue| {
 			console_log!("Connection close");
-		}) as Box<dyn FnMut()>);
+		}) as Box<dyn FnMut(JsValue)>);
 		self.channel.set_onclose(Some(cb.as_ref().unchecked_ref()));
-		cb.forget();
-		let cb = Closure::wrap(Box::new(move || {
+		self.cbs.push(cb);
+		let cb = Closure::wrap(Box::new(move |_arg: JsValue| {
 			console_log!("Connection open");
-		}) as Box<dyn FnMut()>);
+		}) as Box<dyn FnMut(JsValue)>);
 		self.channel.set_onopen(Some(cb.as_ref().unchecked_ref()));
-		cb.forget();
+		self.cbs.push(cb);
 		Ok(())
 	}
 
@@ -176,29 +198,33 @@ impl RTCSocket {
 		Ok(())
 	}
 
-	pub fn set_dc(&mut self, dc: RtcDataChannel, addr: SocketAddr) -> Result<(), JsValue> {
+	pub fn set_dc(&mut self, dc: RtcDataChannel, _addr: SocketAddr) -> Result<(), JsValue> {
 		let onmessage_callback =
 			Closure::wrap(
-				Box::new(move |ev: MessageEvent| match ev.data().as_string() {
-					Some(message) => console_log!("Receiving: {:?}", message),
-					None => {}
-				}) as Box<dyn FnMut(MessageEvent)>,
+				Box::new(move |ev: JsValue| {
+					let ev = MessageEvent::from(ev);
+					match ev.data().as_string() {
+						Some(message) => console_log!("Receiving: {:?}", message),
+						None => {}
+					}
+				}) as Box<dyn FnMut(JsValue)>,
 			);
 		dc.set_onmessage(Some(onmessage_callback.as_ref().unchecked_ref()));
-		onmessage_callback.forget();
+		self.cbs.push(onmessage_callback);
 
-		let cb = Closure::wrap(Box::new(move || {
+		let cb = Closure::wrap(Box::new(move |_arg: JsValue| {
 			console_log!("Connection close");
-		}) as Box<dyn FnMut()>);
+		}) as Box<dyn FnMut(JsValue)>);
 		dc.set_onclose(Some(cb.as_ref().unchecked_ref()));
-		cb.forget();
+		self.cbs.push(cb);
 		
 		dc.send_with_str("Ping from pc2.dc!").unwrap();
-		let cb = Closure::wrap(Box::new(move || {
+		let cb = Closure::wrap(Box::new(move |_arg: JsValue| {
 			console_log!("Connection open");
-		}) as Box<dyn FnMut()>);
+		}) as Box<dyn FnMut(JsValue)>);
 		dc.set_onopen(Some(cb.as_ref().unchecked_ref()));
-		cb.forget();
+		self.cbs.push(cb);
+
 		self.channel = dc;
 		Ok(())
 	}
