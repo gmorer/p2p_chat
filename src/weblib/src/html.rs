@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use web_sys::{ Document, HtmlElement, window, Window, HtmlInputElement, Element };
-use crate::streams::{ Event };
+use crate::event::{ Event };
 use crate::Sender;
 
 

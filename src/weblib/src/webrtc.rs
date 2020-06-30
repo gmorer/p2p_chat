@@ -17,7 +17,8 @@ use web_sys::{
 use wasm_bindgen_futures::JsFuture;
 use crossplatform::proto::{ WebSocketData, IceCandidateStruct };
 use crate::{ log, console_log, Sender };
-use crate::streams::{ Data, Pstream, Event };
+use crate::streams::{ Data, Pstream };
+use crate::event::Event;
 use crate::html::Html;
 
 const ICE_SERVERS: &str = "[{\"urls\": \"stun:stun.l.google.com:19302\"}]";

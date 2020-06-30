@@ -7,7 +7,7 @@ use crossplatform::proto::WebSocketData;
 
 // use crate::{ log, console_log };
 use crate::Sender;
-use crate::streams::{ Event, Branch };
+use crate::event::{ Event, Branch };
 
 /*
 	TODO:

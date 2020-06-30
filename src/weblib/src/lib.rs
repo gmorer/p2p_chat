@@ -5,7 +5,9 @@ use js_sys::Date;
 
 // mod webrtc;
 mod streams;
-use streams::{ Event, Branch };
+
+mod event;
+use event::{ Event, Branch };
 
 mod webrtc;
 
