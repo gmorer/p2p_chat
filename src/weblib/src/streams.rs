@@ -2,7 +2,7 @@ use wasm_bindgen::prelude::*;
 use web_sys::{ window, BinaryType, RtcDataChannel };
 use wasm_bindgen::JsCast;
 use std::net::SocketAddr;
-use protocols::WebSocketData;
+use crossplatform::proto::WebSocketData;
 
 use crate::cb::CB;
 use crate::{ log, console_log, Sender };
@@ -47,7 +47,8 @@ pub enum Event {
 	ServerMessage(Branch, WebSocketData), // TODO: Message struct
 	Html(String, JsValue), // event from html
 	// RtcMessage(SocketAddr, String),
-	DCObj(RtcDataChannel)
+	DCObj(RtcDataChannel),
+	RTCState(bool) // TODO::add state and id
 }
 
 impl Event {
@@ -58,14 +59,30 @@ impl Event {
 			Event::Connected(branch) => Event::connected(socks, branch).await,
 			Event::ServerMessage(branch, msg) => Event::server_msg(socks, sender, msg, branch).await,
 			Event::Html(id, msg) => Event::html(socks, id, msg),
-			Event::DCObj(dc) => Event::dcobj(socks, dc)
+			Event::DCObj(dc) => Event::dcobj(socks, dc, sender),
+			Event::RTCState(state) => Event::rtc_state(socks, state)
 		}
 	}
 
-	fn dcobj(socks: &mut Sockets, dc: RtcDataChannel) -> Result<(), String> {
+	fn rtc_state(socks: &mut Sockets, state: bool) -> Result<(), String> {
+		match state {
+			true => console_log!("Connection open"),
+			false => {
+				console_log!("Connection close");
+				if let Some(Socket::WebRTC(socket)) = &mut socks.tmp.socket {
+					socket.delete();
+				}
+				socks.tmp = Pstream { state: State::Disconnected(None), socket: None};
+			}
+		};
+		Ok(())
+
+	}
+
+	fn dcobj(socks: &mut Sockets, dc: RtcDataChannel, sender: Sender) -> Result<(), String> {
 		match (socks.tmp.state, &mut socks.tmp.socket) {
-			(State::Locked(addr), Some(Socket::WebRTC(socket)))
-			=> socket.set_dc(dc, addr).map_err(|e| format!("Error while setting dc: {:?}", e)),
+			(State::Locked(_), Some(Socket::WebRTC(socket)))
+			=> socket.set_dc(dc, sender).map_err(|e| format!("Error while setting dc: {:?}", e)),
 			_ => Err("Receiving dc obj but tmp isnt locked with an addr".to_string())
 		}
 	}
@@ -91,7 +108,7 @@ impl Event {
 					return Err("The socket is locked".to_string());
 				}
 				if let Some(Socket::WebRTC(socket)) = &mut socks.tmp.socket {
-					socket.answer(&socks.server, &sdp, addr).await.map_err(|e| format!("{:?}", e))?;
+					socket.answer(&socks.server, &sdp, addr, sender).await.map_err(|e| format!("{:?}", e))?;
 					socks.tmp.state = State::Locked(addr);
 					Ok(())
 				} else {

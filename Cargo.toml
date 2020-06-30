@@ -19,8 +19,8 @@ default = [
 web = []
 
 [lib]
-name= "protocols"
-path = "src/protocols/lib.rs"
+name= "crossplatform"
+path = "src/crossplatform/lib.rs"
 
 [[bin]]
 name = "server"

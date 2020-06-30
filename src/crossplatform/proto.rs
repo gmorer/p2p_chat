@@ -1,8 +1,9 @@
-// Structure that well be send across the websocket
-// in a client-server connection
-
 use serde::{Serialize, Deserialize};
 use std::net::SocketAddr;
+
+// Structures that will be send across the websocket
+// in a client-server connection
+
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct IceCandidateStruct {

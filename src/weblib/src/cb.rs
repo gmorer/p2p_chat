@@ -3,7 +3,7 @@ use wasm_bindgen::JsCast;
 use web_sys::{ MessageEvent };
 use js_sys::Uint8Array;
 
-use protocols::WebSocketData;
+use crossplatform::proto::WebSocketData;
 
 // use crate::{ log, console_log };
 use crate::Sender;

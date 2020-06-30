@@ -15,16 +15,12 @@ use web_sys::{
 	RtcDataChannel
 };
 use wasm_bindgen_futures::JsFuture;
-use protocols::{ WebSocketData, IceCandidateStruct };
+use crossplatform::proto::{ WebSocketData, IceCandidateStruct };
 use crate::{ log, console_log, Sender };
 use crate::streams::{ Data, Pstream, Event };
 
-// Doc:
-// https://developer.mozilla.org/en-US/docs/Web/API/WebRTC_API/Connectivity
-
 const ICE_SERVERS: &str = "[{\"urls\": \"stun:stun.l.google.com:19302\"}]";
 
-// #[derive(Clone)]
 pub struct RTCSocket {
 	conn: RtcPeerConnection,
 	channel: RtcDataChannel,
@@ -62,8 +58,7 @@ impl RTCSocket {
 		let onmessage_callback =
 		Closure::wrap(
 			Box::new(move |ev: JsValue| {
-				let ev = MessageEvent::from(ev);
-				match ev.data().as_string() {
+				match MessageEvent::from(ev).data().as_string() {
 					Some(message) => {
 						console_log!("receving: {:?}", message);
 						dc_clone.send_with_str("Pong from pc1.dc!").unwrap();
@@ -109,8 +104,7 @@ impl RTCSocket {
 		/* Handle ice candidate */
 		let server = server.clone();
 		let cb = Closure::wrap(Box::new(move |ev: JsValue| {
-			let ev = RtcPeerConnectionIceEvent::from(ev);
-			match ev.candidate() {
+			match RtcPeerConnectionIceEvent::from(ev).candidate() {
 				Some(candidate) => {
 					let candidate = IceCandidateStruct {
 						candidate: candidate.candidate(),
@@ -127,38 +121,22 @@ impl RTCSocket {
 		self.cbs.push(cb);
 
 		/* Handle OK connection */
-		// TODO: put this in createRTC
 		let ondatachannel_callback = Closure::wrap(Box::new(move |ev: JsValue| {
-			let ev = RtcDataChannelEvent::from(ev);
-			sender.send(Event::DCObj(ev.channel()))
-			// let data_channel = ev.channel();
-			// sender.send(Event::DCObj)
-			// let onmessage_callback =
-			// 	Closure::wrap(
-			// 		Box::new(move |ev: MessageEvent| match ev.data().as_string() {
-			// 			Some(message) => sender.send(Event::RtcMessage(addr, message)),
-			// 			None => {}
-			// 		}) as Box<dyn FnMut(MessageEvent)>,
-			// 	);
-			// data_channel.set_onmessage(Some(onmessage_callback.as_ref().unchecked_ref()));
-			// onmessage_callback.forget();
-
-			// data_channel.send_with_str("Ping from pc2.dc!").unwrap();
+			sender.send(Event::DCObj(RtcDataChannelEvent::from(ev).channel()))
 		}) as Box<dyn FnMut(JsValue)>);
 		self.conn.set_ondatachannel(Some(ondatachannel_callback.as_ref().unchecked_ref()));
 		self.cbs.push(ondatachannel_callback);
 		Ok(())
 	}
 
-	pub async fn answer(&mut self, server: &Pstream, sdp: &String, addr: SocketAddr) -> Result<(), JsValue> {
+	pub async fn answer(&mut self, server: &Pstream, sdp: &String, addr: SocketAddr, sender: Sender) -> Result<(), JsValue> {
 		let mut answer_obj = RtcSessionDescriptionInit::new(RtcSdpType::Answer);
 		answer_obj.sdp(sdp.as_str());
 		JsFuture::from(self.conn.set_remote_description(&answer_obj)).await?;
 		/* Handle ice candidate */
 		let server = server.clone();
 		let cb = Closure::wrap(Box::new(move |ev: JsValue| {
-			let ev = RtcPeerConnectionIceEvent::from(ev);
-			match ev.candidate() {
+			match RtcPeerConnectionIceEvent::from(ev).candidate() {
 				Some(candidate) => {
 					let candidate = IceCandidateStruct {
 						candidate: candidate.candidate(),
@@ -173,13 +151,14 @@ impl RTCSocket {
 		}) as Box<dyn FnMut(JsValue)>);
 		self.conn.set_onicecandidate(Some(cb.as_ref().unchecked_ref()));
 		self.cbs.push(cb);
+		let sender_cl = sender.clone();
 		let cb = Closure::wrap(Box::new(move |_arg: JsValue| {
-			console_log!("Connection close");
+			sender_cl.send(Event::RTCState(false));
 		}) as Box<dyn FnMut(JsValue)>);
 		self.channel.set_onclose(Some(cb.as_ref().unchecked_ref()));
 		self.cbs.push(cb);
 		let cb = Closure::wrap(Box::new(move |_arg: JsValue| {
-			console_log!("Connection open");
+			sender.send(Event::RTCState(true))
 		}) as Box<dyn FnMut(JsValue)>);
 		self.channel.set_onopen(Some(cb.as_ref().unchecked_ref()));
 		self.cbs.push(cb);
@@ -198,12 +177,11 @@ impl RTCSocket {
 		Ok(())
 	}
 
-	pub fn set_dc(&mut self, dc: RtcDataChannel, _addr: SocketAddr) -> Result<(), JsValue> {
+	pub fn set_dc(&mut self, dc: RtcDataChannel, sender: Sender) -> Result<(), JsValue> {
 		let onmessage_callback =
 			Closure::wrap(
 				Box::new(move |ev: JsValue| {
-					let ev = MessageEvent::from(ev);
-					match ev.data().as_string() {
+					match MessageEvent::from(ev).data().as_string() {
 						Some(message) => console_log!("Receiving: {:?}", message),
 						None => {}
 					}
@@ -212,20 +190,26 @@ impl RTCSocket {
 		dc.set_onmessage(Some(onmessage_callback.as_ref().unchecked_ref()));
 		self.cbs.push(onmessage_callback);
 
+		let sender_cl = sender.clone();
 		let cb = Closure::wrap(Box::new(move |_arg: JsValue| {
-			console_log!("Connection close");
+			sender_cl.send(Event::RTCState(false));
 		}) as Box<dyn FnMut(JsValue)>);
 		dc.set_onclose(Some(cb.as_ref().unchecked_ref()));
 		self.cbs.push(cb);
 		
 		dc.send_with_str("Ping from pc2.dc!").unwrap();
 		let cb = Closure::wrap(Box::new(move |_arg: JsValue| {
-			console_log!("Connection open");
+			sender.send(Event::RTCState(true));
 		}) as Box<dyn FnMut(JsValue)>);
 		dc.set_onopen(Some(cb.as_ref().unchecked_ref()));
 		self.cbs.push(cb);
 
 		self.channel = dc;
 		Ok(())
+	}
+
+	pub fn delete(&self) {
+		self.channel.close();
+		self.conn.close();
 	}
 }
