@@ -18,6 +18,7 @@ use wasm_bindgen_futures::JsFuture;
 use crossplatform::proto::{ WebSocketData, IceCandidateStruct };
 use crate::{ log, console_log, Sender };
 use crate::streams::{ Data, Pstream, Event };
+use crate::html::Html;
 
 const ICE_SERVERS: &str = "[{\"urls\": \"stun:stun.l.google.com:19302\"}]";
 
@@ -44,7 +45,7 @@ impl RTCSocket {
 		}
 	}
 
-	pub async fn new(server: &Pstream, sender: Sender, should_send: bool) -> Result<Self, JsValue> {
+	pub async fn new(server: &Pstream, sender: Sender, html: &Html, should_send: bool) -> Result<Self, JsValue> {
 		let mut cbs = vec!();
 		/* Create the RtcPeerConnection struct */
 		let mut conf = RtcConfiguration::new();
@@ -79,6 +80,7 @@ impl RTCSocket {
 		JsFuture::from(peer_connection.set_local_description(&offer_obj)).await?;
 		if should_send {
 			let message = WebSocketData::OfferSDP(offer, None);
+			html.chat_info("Asking the server for a peer...");
 			server.send(Data::WsData(message));
 		}
 		Ok(RTCSocket {

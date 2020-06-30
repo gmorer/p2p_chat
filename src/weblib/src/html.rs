@@ -79,4 +79,12 @@ impl Html {
 			elem.insert_adjacent_html("beforeend", value.as_str());
 		}
 	}
+
+	pub fn chat_msg(&self, user: &str, msg: &str) {
+		self.append(MESSAGE_BOX_ID, &format!("<p><b>{}: </b> {}</p>", user, msg));
+	}
+
+	pub fn chat_info(&self, msg: &str) {
+		self.append(MESSAGE_BOX_ID, &format!("<p><i>{}</i></p>", msg));
+	}
 }
