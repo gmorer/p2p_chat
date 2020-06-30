@@ -44,7 +44,7 @@ impl RTCSocket {
 		}
 	}
 
-	pub async fn new(server: &Pstream, should_send: bool) -> Result<Self, JsValue> {
+	pub async fn new(server: &Pstream, sender: Sender, should_send: bool) -> Result<Self, JsValue> {
 		let mut cbs = vec!();
 		/* Create the RtcPeerConnection struct */
 		let mut conf = RtcConfiguration::new();
@@ -54,14 +54,15 @@ impl RTCSocket {
 
 		/* Create the Data Channel */
 		let data_channel = peer_connection.create_data_channel("my-data-channel");
-		let dc_clone = data_channel.clone();
+		// let dc_clone = data_channel.clone();
 		let onmessage_callback =
 		Closure::wrap(
 			Box::new(move |ev: JsValue| {
 				match MessageEvent::from(ev).data().as_string() {
 					Some(message) => {
-						console_log!("receving: {:?}", message);
-						dc_clone.send_with_str("Pong from pc1.dc!").unwrap();
+						sender.send(Event::RtcMessage(message))
+						// console_log!("receving: {:?}", message);
+						// dc_clone.send_with_str("Pong from pc1.dc!").unwrap();
 					}
 					None => {}
 				}
@@ -153,12 +154,12 @@ impl RTCSocket {
 		self.cbs.push(cb);
 		let sender_cl = sender.clone();
 		let cb = Closure::wrap(Box::new(move |_arg: JsValue| {
-			sender_cl.send(Event::RTCState(false));
+			sender_cl.send(Event::RtcState(false));
 		}) as Box<dyn FnMut(JsValue)>);
 		self.channel.set_onclose(Some(cb.as_ref().unchecked_ref()));
 		self.cbs.push(cb);
 		let cb = Closure::wrap(Box::new(move |_arg: JsValue| {
-			sender.send(Event::RTCState(true))
+			sender.send(Event::RtcState(true))
 		}) as Box<dyn FnMut(JsValue)>);
 		self.channel.set_onopen(Some(cb.as_ref().unchecked_ref()));
 		self.cbs.push(cb);
@@ -178,11 +179,12 @@ impl RTCSocket {
 	}
 
 	pub fn set_dc(&mut self, dc: RtcDataChannel, sender: Sender) -> Result<(), JsValue> {
+		let sender_cl = sender.clone();
 		let onmessage_callback =
 			Closure::wrap(
 				Box::new(move |ev: JsValue| {
 					match MessageEvent::from(ev).data().as_string() {
-						Some(message) => console_log!("Receiving: {:?}", message),
+						Some(message) => sender_cl.send(Event::RtcMessage(message)),
 						None => {}
 					}
 				}) as Box<dyn FnMut(JsValue)>,
@@ -192,14 +194,12 @@ impl RTCSocket {
 
 		let sender_cl = sender.clone();
 		let cb = Closure::wrap(Box::new(move |_arg: JsValue| {
-			sender_cl.send(Event::RTCState(false));
+			sender_cl.send(Event::RtcState(false));
 		}) as Box<dyn FnMut(JsValue)>);
 		dc.set_onclose(Some(cb.as_ref().unchecked_ref()));
 		self.cbs.push(cb);
-		
-		dc.send_with_str("Ping from pc2.dc!").unwrap();
 		let cb = Closure::wrap(Box::new(move |_arg: JsValue| {
-			sender.send(Event::RTCState(true));
+			sender.send(Event::RtcState(true));
 		}) as Box<dyn FnMut(JsValue)>);
 		dc.set_onopen(Some(cb.as_ref().unchecked_ref()));
 		self.cbs.push(cb);

@@ -6,7 +6,7 @@ use crossplatform::proto::WebSocketData;
 
 use crate::cb::CB;
 use crate::{ log, console_log, Sender };
-use crate::html::{ MESSAGE_FIELD_ID, BUTTON_SEND_MESSAGE, get_input_value, set_input_value  };
+use crate::html::{ MESSAGE_FIELD_ID, BUTTON_SEND_MESSAGE, MESSAGE_BOX_ID, Html };
 use crate::webrtc::RTCSocket;
 
 #[derive(Debug)]
@@ -19,11 +19,12 @@ pub enum Branch {
 	Dleft
 }
 
-fn reconnect_server(socks: &mut Sockets, cb: &CB) -> Result<(), String> {
+fn reconnect_server(socks: &mut Sockets, cb: &CB, html: &Html) -> Result<(), String> {
 	let socket_url = format!(
 		"ws://{}",
 		window().expect("Cannot get the window object").location().host().expect("cannot get the url")
 	);
+	html.append(MESSAGE_BOX_ID, &format!("<p><i>Reconnecting to the server...</i></p>"));
 	console_log!("window location: {} ", socket_url);
 	match web_sys::WebSocket::new(&socket_url) {
 		Ok(ws) => {
@@ -46,29 +47,35 @@ pub enum Event {
 	Connected(Branch),
 	ServerMessage(Branch, WebSocketData), // TODO: Message struct
 	Html(String, JsValue), // event from html
-	// RtcMessage(SocketAddr, String),
 	DCObj(RtcDataChannel),
-	RTCState(bool) // TODO::add state and id
+	RtcMessage(String),
+	RtcState(bool) // TODO::add state and id
 }
 
 impl Event {
-	pub async fn execute(self, sender: Sender, socks: &mut Sockets, cb: &CB) -> Result<(), String>{
+	pub async fn execute(self, sender: Sender, socks: &mut Sockets, cb: &CB, html: &Html) -> Result<(), String>{
 		match self {
 			Event::Verification => Err("Getting verification".to_string()),
-			Event::Disconnect(branch) => Event::disconnect(socks, cb, branch),
-			Event::Connected(branch) => Event::connected(socks, branch).await,
+			Event::Disconnect(branch) => Event::disconnect(socks, cb, branch, html),
+			Event::Connected(branch) => Event::connected(socks, branch, sender, html).await,
 			Event::ServerMessage(branch, msg) => Event::server_msg(socks, sender, msg, branch).await,
-			Event::Html(id, msg) => Event::html(socks, id, msg),
+			Event::Html(id, msg) => Event::html(socks, id, msg, html),
 			Event::DCObj(dc) => Event::dcobj(socks, dc, sender),
-			Event::RTCState(state) => Event::rtc_state(socks, state)
+			Event::RtcMessage(msg) => Event::rtc_message(msg, html),
+			Event::RtcState(state) => Event::rtc_state(socks, state, html),
 		}
 	}
 
-	fn rtc_state(socks: &mut Sockets, state: bool) -> Result<(), String> {
+	fn rtc_message(msg: String, html: &Html) -> Result<(), String> {
+		html.append(MESSAGE_BOX_ID, &format!("<p><b>Peer:</b>{}</p>", msg));
+		Ok(())
+	}
+
+	fn rtc_state(socks: &mut Sockets, state: bool, html: &Html) -> Result<(), String> {
 		match state {
-			true => console_log!("Connection open"),
+			true => html.append(MESSAGE_BOX_ID, &"<p><i>Connection openned with Peer</i></p>".to_string()),
 			false => {
-				console_log!("Connection close");
+				html.append(MESSAGE_BOX_ID, &"<p><i>Connection closed with Peer</i></p>".to_string());
 				if let Some(Socket::WebRTC(socket)) = &mut socks.tmp.socket {
 					socket.delete();
 				}
@@ -96,7 +103,7 @@ impl Event {
 				if let Some(Socket::WebRTC(socket)) = &mut socks.tmp.socket {
 					socket.offer(&socks.server, &sdp, addr, sender).await.map_err(|e| format!("{:?}", e))?
 				} else {
-					let mut socket = RTCSocket::new(&socks.server, false).await.map_err(|e| format!("{:?}", e))?;
+					let mut socket = RTCSocket::new(&socks.server, sender.clone(), false).await.map_err(|e| format!("{:?}", e))?;
 					socket.offer(&socks.server, &sdp, addr, sender).await.map_err(|e| format!("{:?}", e))?;
 					socks.tmp.socket = Some(Socket::WebRTC(socket))
 				}
@@ -131,14 +138,15 @@ impl Event {
 		}
 	}
 
-	async fn connected(socks: &mut Sockets, branch: Branch) -> Result<(), String> {
-		console_log!("Connected: {:?}", branch);
+	async fn connected(socks: &mut Sockets, branch: Branch, sender: Sender, html: &Html) -> Result<(), String> {
+		// console_log!("Connected: {:?}", branch);
 		match branch {
 			// Branch::Server => socks.server.state = State::Connected(42 as u64),
 			Branch::Server => {
+				html.append(MESSAGE_BOX_ID, &format!("<p><i>Connected to the server!</i></p>"));
 				socks.server.state = State::Connected(crate::time_now());
 				if socks.right.is_disconnected() && socks.left.is_disconnected() && socks.tmp.is_disconnected() { // add the others
-					match RTCSocket::new(&socks.server, true).await {
+					match RTCSocket::new(&socks.server, sender, true).await {
 						Ok(socket) => { socks.tmp.socket = Some(Socket::WebRTC(socket)); Ok(()) },
 						Err(e) => Err(format!("Error while creating socket: {:?}", e))
 					}
@@ -148,12 +156,13 @@ impl Event {
 		}
 	}
 
-	fn html(socks: &Sockets, id: String, msg: JsValue) -> Result<(), String> {
+	fn html(socks: &Sockets, id: String, msg: JsValue, html: &Html) -> Result<(), String> {
 		match id.as_str() {
 			BUTTON_SEND_MESSAGE => {
-				let msg = get_input_value(MESSAGE_FIELD_ID);
-				set_input_value(MESSAGE_FIELD_ID, "");
-				console_log!("need to send {}", msg);
+				let msg = html.get_input_value(MESSAGE_FIELD_ID);
+				html.set_input_value(MESSAGE_FIELD_ID, "");
+				// console_log!("need to send {}", msg);
+				html.append(MESSAGE_BOX_ID, &format!("<p><b>me:</b>{}</p>", msg));
 				// let rsp = WebSocketData::Message(msg);
 				// socks.server.send(Data::WsData(rsp));
 				socks.tmp.send(Data::RtcData(msg));
@@ -163,9 +172,9 @@ impl Event {
 		}
 	}
 
-	fn disconnect(socks: &mut Sockets, cb: &CB, branch: Branch) -> Result<(), String> {
+	fn disconnect(socks: &mut Sockets, cb: &CB, branch: Branch, html: &Html) -> Result<(), String> {
 		match branch {
-			Branch::Server => reconnect_server(socks, cb),
+			Branch::Server => reconnect_server(socks, cb, html),
 			_ => Err(format!("unsupported disconnect branch: {:?}", branch))
 		}
 	}

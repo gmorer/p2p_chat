@@ -4,7 +4,8 @@ sgr0 := $(shell tput sgr0)
 STATIC_FILES =	""			\
 				"!index.js"	\
 				"!.gitignore"\
-				"!index.html"
+				"!index.html"\
+				"!app.css"
 
 build:
 	@echo "$(bold)Compiling the server$(sgr0)"

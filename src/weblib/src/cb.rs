@@ -9,6 +9,12 @@ use crossplatform::proto::WebSocketData;
 use crate::Sender;
 use crate::streams::{ Event, Branch };
 
+/*
+	TODO:
+	This should be remove in the future
+	and placed in a struct with the server socket
+*/
+
 #[allow(dead_code)]
 pub struct CB {
 	pub message_from_server: wasm_bindgen::closure::Closure<dyn std::ops::FnMut(JsValue)>,

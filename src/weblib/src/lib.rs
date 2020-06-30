@@ -13,7 +13,7 @@ mod cb;
 use cb::CB;
 
 mod html;
-use html::connect_html;
+use html::Html;
 
 #[wasm_bindgen]
 extern "C" {
@@ -50,7 +50,7 @@ async fn main_loop() {
 
 	let sender = Sender(sender);
 	let cb = CB::init(sender.clone());
-	connect_html(sender.clone());
+	let html = Html::new(sender.clone());
 	sender.send(Event::Disconnect(Branch::Server));
 	let mut socks = streams::Sockets::default();
 	/*
@@ -66,7 +66,7 @@ async fn main_loop() {
 	So we use the while loop
 	*/
 	while let Some(e) = receiver.next().await {
-		if let Err(e) = e.execute(sender.clone(), &mut socks, &cb).await {
+		if let Err(e) = e.execute(sender.clone(), &mut socks, &cb, &html).await {
 			console_log!("Execution error: {}", e);
 		}
 	}
