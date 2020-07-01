@@ -3,16 +3,15 @@ use futures::channel::mpsc::{ unbounded, UnboundedSender };
 use futures::stream::StreamExt;
 use js_sys::Date;
 
-// mod webrtc;
 mod streams;
+mod websocket;
+mod webrtc;
 
 mod event;
 use event::{ Event, Branch };
 
-mod webrtc;
-
-mod cb;
-use cb::CB;
+// mod cb;
+// use cb::CB;
 
 mod html;
 use html::Html;
@@ -51,7 +50,6 @@ async fn main_loop() {
 	let (sender, mut receiver) = unbounded::<Event>();
 
 	let sender = Sender(sender);
-	let cb = CB::init(sender.clone());
 	let html = Html::new(sender.clone());
 	sender.send(Event::Disconnect(Branch::Server));
 	let mut socks = streams::Sockets::default();
@@ -61,14 +59,14 @@ async fn main_loop() {
 	because of `&mut socks`
 	
 	receiver.for_each(|e| {
-		e.execute(sender.clone(), &mut socks, &cb)
+		e.execute(sender.clone(), &mut socks, &html)
 		// future::ready(())
 	}).await;
 	
 	So we use the while loop
 	*/
 	while let Some(e) = receiver.next().await {
-		if let Err(e) = e.execute(sender.clone(), &mut socks, &cb, &html).await {
+		if let Err(e) = e.execute(sender.clone(), &mut socks, &html).await {
 			console_log!("Execution error: {}", e);
 		}
 	}

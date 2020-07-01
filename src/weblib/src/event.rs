@@ -1,33 +1,12 @@
 use wasm_bindgen::prelude::*;
-use web_sys::{ BinaryType, RtcDataChannel };
-use wasm_bindgen::JsCast;
+use web_sys::{ RtcDataChannel };
 use crossplatform::proto::WebSocketData;
 
-use crate::cb::CB;
 use crate::{ log, console_log, Sender };
 use crate::html::{ MESSAGE_FIELD_ID, BUTTON_SEND_MESSAGE, Html };
 use crate::webrtc::RTCSocket;
+use crate::websocket::WebSocket;
 use crate::streams::{ Sockets, Socket, State, Pstream, Data };
-
-fn reconnect_server(socks: &mut Sockets, cb: &CB, html: &Html) -> Result<(), String> {
-	let socket_url = format!(
-		"ws://{}",
-		html.window.location().host().expect("cannot get the url")
-	);
-	html.chat_info("Reconnecting to the server...");
-	console_log!("window location: {} ", socket_url);
-	match web_sys::WebSocket::new(&socket_url) {
-		Ok(ws) => {
-			ws.set_binary_type(BinaryType::Arraybuffer);
-			ws.set_onopen(Some(cb.connected_from_server.as_ref().unchecked_ref()));
-			ws.set_onclose(Some(cb.disconnect_from_server.as_ref().unchecked_ref()));
-			ws.set_onmessage(Some(cb.message_from_server.as_ref().unchecked_ref()));
-			socks.server.socket = Some(Socket::WebSocket(ws));
-			Ok(())
-		}
-		Err(e) => Err(format!("Error while connecting the server socket: {:?}", e))
-	}
-}
 
 #[derive(Debug)]
 #[allow(dead_code)]
@@ -53,10 +32,10 @@ pub enum Event {
 }
 
 impl Event {
-	pub async fn execute(self, sender: Sender, socks: &mut Sockets, cb: &CB, html: &Html) -> Result<(), String>{
+	pub async fn execute(self, sender: Sender, socks: &mut Sockets, html: &Html) -> Result<(), String>{
 		match self {
 			Event::Verification => Err("Getting verification".to_string()),
-			Event::Disconnect(branch) => Event::disconnect(socks, cb, branch, html),
+			Event::Disconnect(branch) => Event::disconnect(socks, branch, html, sender),
 			Event::Connected(branch) => Event::connected(socks, branch, sender, html).await,
 			Event::ServerMessage(branch, msg) => Event::server_msg(socks, sender, msg, branch, html).await,
 			Event::Html(id, msg) => Event::html(socks, id, msg, html),
@@ -172,9 +151,16 @@ impl Event {
 		}
 	}
 
-	fn disconnect(socks: &mut Sockets, cb: &CB, branch: Branch, html: &Html) -> Result<(), String> {
+	fn disconnect(socks: &mut Sockets, branch: Branch, html: &Html, sender: Sender) -> Result<(), String> {
 		match branch {
-			Branch::Server => reconnect_server(socks, cb, html),
+			Branch::Server => {
+				if let Some(Socket::WebSocket(server)) = &socks.server.socket {
+					server.delete();
+				}
+				let socket = WebSocket::new(sender, html)?;
+				socks.server.socket = Some(Socket::WebSocket(socket));
+				Ok(())
+			}
 			_ => Err(format!("unsupported disconnect branch: {:?}", branch))
 		}
 	}

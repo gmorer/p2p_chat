@@ -3,6 +3,7 @@ use crossplatform::proto::WebSocketData;
 
 use crate::{ log, console_log };
 use crate::webrtc::RTCSocket;
+use crate::websocket;
 
 pub enum Data {
 	WsData(WebSocketData),
@@ -10,7 +11,7 @@ pub enum Data {
 }
 #[derive(Clone)]
 pub enum Socket {
-	WebSocket(web_sys::WebSocket),
+	WebSocket(websocket::WebSocket),
 	WebRTC(RTCSocket)
 }
 
@@ -37,12 +38,8 @@ impl Pstream {
 			_ => ()
 		};
 		match (&self.socket, &data) {
-			(Some(Socket::WebSocket(socket)), Data::WsData(data)) => 
-				{ if let Err(e) = socket.send_with_u8_array(data.into_u8().expect("error while transforming").as_slice()) {
-					console_log!("Error while sending to server: {:?}", e)
-				}},
-			(Some(Socket::WebRTC(socket)), Data::RtcData(data)) =>
-				socket.send(&data),
+			(Some(Socket::WebSocket(socket)), Data::WsData(data)) => socket.send(data),
+			(Some(Socket::WebRTC(socket)), Data::RtcData(data)) => socket.send(&data),
 			_ =>
 				console_log!("Invalid data type for websocket")
 		};
