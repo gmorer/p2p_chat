@@ -9,6 +9,7 @@ use hyper::upgrade::Upgraded;
 use hyper::{Body, Request, Response, StatusCode};
 use headers::HeaderMapExt;
 use crossplatform::proto::WebSocketData;
+use crossplatform::id::Id;
 use tungstenite::Message;
 use tungstenite::error::Error;
 use crate::process::process;
@@ -25,7 +26,8 @@ async fn upgrade(peers: PeerMap, addr: SocketAddr, upgraded: Upgraded) {
 	).await;
 	// create multithread stream to keep it in the mutex
 	let (tx, rx) = unbounded();
-	peers.lock().unwrap().insert(addr, tx);
+	let id = Id::new(rand::random(), rand::random());
+	peers.lock().unwrap().insert(addr, (id, tx));
 	let (ws_sender, ws_receiver) = ws_stream.split();
 	// create new client
 	
@@ -53,7 +55,7 @@ async fn upgrade(peers: PeerMap, addr: SocketAddr, upgraded: Upgraded) {
 			};
 			// TODO: remove those warning
 			match peers.lock().unwrap().get(&addr) {
-				Some(sender) => { sender.unbounded_send(rsp); },
+				Some((_id, sender)) => { sender.unbounded_send(rsp); },
 				None => {
 					eprintln!("Cannot a reply to a phantom");
 					return future::err(Error::Protocol(std::borrow::Cow::Borrowed("Internal Error")));

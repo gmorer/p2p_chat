@@ -18,11 +18,13 @@ use futures::channel::mpsc::UnboundedSender;
 // use futures_util::stream::StreamExt;
 use tungstenite::protocol::Message;
 
+use crossplatform::id::Id;
+
 mod websocket;
 mod process;
 
 type Tx = UnboundedSender<Message>;
-type PeerMap = Arc<Mutex<HashMap<SocketAddr, Tx>>>;
+type PeerMap = Arc<Mutex<HashMap<SocketAddr, (Id, Tx)>>>;
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
 // const ADDR: &str = "127.0.0.1:8088";

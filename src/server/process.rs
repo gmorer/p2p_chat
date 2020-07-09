@@ -6,6 +6,7 @@ use tungstenite::Message;
 use rand;
 use futures::channel::mpsc::UnboundedSender;
 use crate::PeerMap;
+use crate::Id;
 
 /* WebSocketData to Message
 let rsp = match rsp.into_u8() {
@@ -18,14 +19,14 @@ let rsp = match rsp.into_u8() {
 */
 
 type Tx = UnboundedSender<Message>;
-type PeerMapLock = HashMap<SocketAddr, Tx>;
+type PeerMapLock = HashMap<SocketAddr, (Id, Tx)>;
 
 fn broadcast_msg(msg: WebSocketData, addr: SocketAddr, peers: &PeerMap) -> Option<WebSocketData> {
 	let peers = peers.lock().unwrap();
 	let broadcast_recipients = peers
 		.iter()
 		.filter(|(peer_addr, _)| peer_addr != &&addr)
-		.map(|(_, ws_sink)| ws_sink);
+		.map(|(_, (_id, ws_sink))| ws_sink);
 	
 	match msg.into_u8() {
 		Ok(resp) => {
@@ -46,7 +47,7 @@ fn get_random_peer<'a>(paddr: SocketAddr, peers: &'a PeerMapLock) -> Option<&'a 
 	// Not sure about that
 	for _ in 0..50 {
 		let rand = (rand::random::<usize>() + 1) % len;
-		if let Some(( addr, sender )) = iter.nth(rand) {
+		if let Some(( addr, (id, sender) )) = iter.nth(rand) {
 			if &paddr != addr {
 				return Some(sender)
 			}
@@ -63,7 +64,7 @@ fn offer_sdp(addr: SocketAddr, paddr: Option<SocketAddr>, data: String, peers: &
 	if len < 2 { return None };
 
 	let psender = match paddr {
-		Some(paddr) => peers.get(&paddr)?,
+		Some(paddr) => &peers.get(&paddr)?.1,
 		None => get_random_peer(addr, &*peers)?
 	};
 
@@ -78,7 +79,7 @@ fn offer_sdp(addr: SocketAddr, paddr: Option<SocketAddr>, data: String, peers: &
 // function for both answerSDP and IceCandidate proxiing
 fn proxy(paddr: SocketAddr, msg: WebSocketData, peers: &PeerMap) -> Option<WebSocketData> {
 	let peers = peers.lock().unwrap();
-	let psender = peers.get(&paddr)?;
+	let (_id, psender) = peers.get(&paddr)?;
 
 	match msg.into_u8() {
 		Ok(rsp) => { psender.unbounded_send(Message::Binary(rsp)); },
