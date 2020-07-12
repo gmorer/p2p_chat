@@ -1,5 +1,6 @@
 use std::net::SocketAddr;
 use crossplatform::proto::WebSocketData;
+use crossplatform::id::Id;
 
 use crate::{ log, console_log };
 use crate::webrtc::RTCSocket;
@@ -88,6 +89,7 @@ impl Pstream {
 
 // TODO all mutex
 pub struct Sockets {
+	pub id: Option<Id>,
 	pub server: Pstream,
 	pub right: Pstream,
 	// pub dright: Option<Pstream>,
@@ -104,7 +106,8 @@ impl Sockets {
 			right: Pstream { state: State::Disconnected(None), socket: None},
 			// dright: None,
 			left: Pstream { state: State::Disconnected(None), socket: None},
-			tmp: Pstream { state: State::Disconnected(None), socket: None}
+			tmp: Pstream { state: State::Disconnected(None), socket: None},
+			id: None
 			// dleft: None
 		}
 	}

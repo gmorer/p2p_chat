@@ -3,7 +3,7 @@ use web_sys::{ RtcDataChannel };
 use crossplatform::proto::WebSocketData;
 
 use crate::{ log, console_log, Sender };
-use crate::html::{ MESSAGE_FIELD_ID, BUTTON_SEND_MESSAGE, Html };
+use crate::html::{ MESSAGE_FIELD_ID, BUTTON_SEND_MESSAGE, Html, ID_FIELD_ID };
 use crate::webrtc::RTCSocket;
 use crate::websocket::WebSocket;
 use crate::streams::{ Sockets, Socket, State, Pstream, Data };
@@ -113,6 +113,13 @@ impl Event {
 				// console_log!("receiveing IceCandidate: {:?} {:?}", candidate, addr);
 				// incomming_ice_candidate(socks, &candidate, addr).await;
 			},
+
+			WebSocketData::Id(Some(id)) => {
+				socks.id = Some(id);
+				html.fill(ID_FIELD_ID, &id.0.to_string());
+				// html.chat_info(format!("receiving our id: {}", id.0).as_str());
+				Ok(())
+			}
 			_ => Err(format!("Cannot handle from {:?} : {:?}", branch, msg))
 		}
 	}
@@ -124,6 +131,7 @@ impl Event {
 			Branch::Server => {
 				html.chat_info("Connected to the server!");
 				socks.server.state = State::Connected(crate::time_now());
+				socks.server.send(Data::WsData(WebSocketData::Id(None)));
 				if socks.right.is_disconnected() && socks.left.is_disconnected() && socks.tmp.is_disconnected() { // add the others
 					match RTCSocket::new(&socks.server, sender, html, true).await {
 						Ok(socket) => { socks.tmp.socket = Some(Socket::WebRTC(socket)); Ok(()) },

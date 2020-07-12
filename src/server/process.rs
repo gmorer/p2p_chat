@@ -3,7 +3,6 @@ use crossplatform::proto::WebSocketData;
 use std::net::SocketAddr;
 use std::collections::HashMap;
 use tungstenite::Message;
-use rand;
 use futures::channel::mpsc::UnboundedSender;
 use crate::PeerMap;
 use crate::Id;
@@ -40,21 +39,24 @@ fn broadcast_msg(msg: WebSocketData, addr: SocketAddr, peers: &PeerMap) -> Optio
 	None
 }
 
-fn get_random_peer<'a>(paddr: SocketAddr, peers: &'a PeerMapLock) -> Option<&'a UnboundedSender<Message>> {
-	let mut iter = peers.iter();
-	let len = peers.len();
-	
-	// Not sure about that
-	for _ in 0..50 {
-		let rand = (rand::random::<usize>() + 1) % len;
-		if let Some(( addr, (id, sender) )) = iter.nth(rand) {
-			if &paddr != addr {
-				return Some(sender)
-			}
+fn closest_peer<'a>(addr: SocketAddr, peers: &'a PeerMapLock) -> Option<&'a UnboundedSender<Message>> {
+	let (id, _) = peers.get(&addr)?;
+
+	println!("Peers: {:?}", peers);
+	let mut distance = u64::MAX;
+	let mut res = None;
+
+	for (_, (i_id, i_sender)) in peers.iter() {
+		if id == i_id {
+			continue;
+		}
+		let i_distance = id.distance(i_id);
+		if i_distance < distance {
+			distance = i_distance;
+			res = Some(i_sender);
 		}
 	}
-	eprintln!("Failed looking for random client");
-	None
+	res
 }
 
 fn offer_sdp(addr: SocketAddr, paddr: Option<SocketAddr>, data: String, peers: &PeerMap) -> Option<WebSocketData> {
@@ -65,9 +67,10 @@ fn offer_sdp(addr: SocketAddr, paddr: Option<SocketAddr>, data: String, peers: &
 
 	let psender = match paddr {
 		Some(paddr) => &peers.get(&paddr)?.1,
-		None => get_random_peer(addr, &*peers)?
+		None => closest_peer(addr, &*peers)?
 	};
 
+	println!("got a psender");
 	let rsp = WebSocketData::OfferSDP(data, Some(addr));
 	match rsp.into_u8() {
 		Ok(rsp) => { psender.unbounded_send(Message::binary(rsp)); },
@@ -88,11 +91,18 @@ fn proxy(paddr: SocketAddr, msg: WebSocketData, peers: &PeerMap) -> Option<WebSo
 	None
 }
 
+fn send_id(addr: SocketAddr, peers: &PeerMap) -> Option<WebSocketData> {
+	let peers = peers.lock().unwrap();
+	let (id, _sender) = peers.get(&addr)?;
+	Some(WebSocketData::Id(Some(id.clone())))
+}
+
 pub fn process(addr: SocketAddr, msg: WebSocketData, peers: &PeerMap) -> Option<WebSocketData> {
 	match msg {
 		WebSocketData::OfferSDP(data, paddr) => offer_sdp(addr , paddr, data, peers),
 		WebSocketData::AnswerSDP(data, paddr) => proxy(paddr, WebSocketData::AnswerSDP(data, addr), peers),
 		WebSocketData::IceCandidate(data, paddr) => proxy(paddr, WebSocketData::IceCandidate(data, addr), peers),
-		WebSocketData::Message(_) =>  broadcast_msg(msg, addr, peers)
+		WebSocketData::Message(_) =>  broadcast_msg(msg, addr, peers),
+		WebSocketData::Id(_) => send_id(addr, peers)
 	}
 }

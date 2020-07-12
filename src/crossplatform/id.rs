@@ -1,7 +1,8 @@
-use std::convert::TryInto;
+// use std::convert::TryInto;
+use serde::{Serialize, Deserialize};
 
-#[derive(Debug)]
-pub struct Id(u64);
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize, Copy, Clone)]
+pub struct Id(pub u64);
 
 impl Id {
 
@@ -18,10 +19,10 @@ impl Id {
 	}
 
 	pub fn distance(&self, id2: &Self) -> u64 {
-		let lat = self.get_lat() - id2.get_lat();
-		let long = self.get_long() - id2.get_long();
-		let hyp = (lat * lat + long * long) as f64;
-		hyp.sqrt().floor() as u64
+		println!("lat = {} - {}", self.get_lat(), id2.get_lat());
+		let lat = self.get_lat() as i64 - id2.get_lat() as i64;
+		let long = self.get_long() as i64 - id2.get_long() as i64;
+		(lat.abs() + long.abs()) as u64
 	}
 }
 

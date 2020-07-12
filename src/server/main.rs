@@ -49,6 +49,7 @@ pub async fn send_static(req: Request<Body>) -> Result<Response<Body>> {
 		"wasm" => "application/wasm",
 		_ => ""
 	};
+	// TODO: Range header
 	let file = match File::open(format!("{}/{}", STATIC_FOLDER, uri)).await {
 		Ok(file) => file,
 		Err(_) => File::open(format!("{}/{}", STATIC_FOLDER, "index.html")).await.expect(&format!("cannot find index.html in {}", STATIC_FOLDER))

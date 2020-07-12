@@ -6,3 +6,13 @@ i {
 	max-height: 20em;
 	overflow: auto;
 }
+
+.id_field {
+	position: absolute;
+	right: 2em;
+	top: 1em;
+	border: 1px solid black !important;
+	border-radius: 15px;
+	padding-left: 1em;
+	padding-right: 1em;
+}

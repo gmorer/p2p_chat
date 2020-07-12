@@ -9,6 +9,7 @@ use crate::Sender;
 pub const BUTTON_SEND_MESSAGE: &'static str = "send_message";
 pub const MESSAGE_FIELD_ID: &'static str = "message_field";
 pub const MESSAGE_BOX_ID: &'static str = "message_box";
+pub const ID_FIELD_ID: &'static str = "id_field";
 
 // TODO: global input hashmap (gota go fast)
 
@@ -37,7 +38,8 @@ impl Html {
 		let ids = [
 			(MESSAGE_FIELD_ID, false),
 			(MESSAGE_BOX_ID, false),
-			(BUTTON_SEND_MESSAGE, true)
+			(BUTTON_SEND_MESSAGE, true),
+			(ID_FIELD_ID, false)
 		];
 		for (id, click) in ids.iter() {
 			if let Some(element) = document.get_element_by_id(id) {
@@ -80,8 +82,17 @@ impl Html {
 		}
 	}
 
+	pub fn fill(&self, id: &str, value: &String) {
+		if let Some(elem) = self.elements.get(&id.to_string()) {
+			elem.set_inner_html(value.as_str());
+		}
+	}
+
 	pub fn chat_msg(&self, user: &str, msg: &str) {
 		self.append(MESSAGE_BOX_ID, &format!("<p><b>{}: </b> {}</p>", user, msg));
+		if let Some(elem) = self.elements.get(&MESSAGE_BOX_ID.to_string()) {
+			elem.set_scroll_top(elem.scroll_height());
+		}
 	}
 
 	pub fn chat_info(&self, msg: &str) {

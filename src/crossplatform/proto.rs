@@ -1,6 +1,6 @@
 use serde::{Serialize, Deserialize};
 use std::net::SocketAddr;
-
+use crate::id::Id;
 // Structures that will be send across the websocket
 // in a client-server connection
 
@@ -19,6 +19,7 @@ pub enum WebSocketData {
 	AnswerSDP(String, SocketAddr),
 	IceCandidate(IceCandidateStruct, SocketAddr),
 	Message(String), // For testing purpose
+	Id(Option<Id>),
 	// TODO: whoami
 }
 
