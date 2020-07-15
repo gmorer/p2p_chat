@@ -26,4 +26,5 @@ run:
 	cargo run bin --server
 
 test:
-	echo $(GITIGNORE_FILE)
+	@cargo test
+	@wasm-pack test src/weblib/ --node

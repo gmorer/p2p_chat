@@ -2,7 +2,8 @@ use wasm_bindgen::prelude::*;
 use web_sys::{ RtcDataChannel };
 use crossplatform::proto::WebSocketData;
 
-use crate::{ log, console_log, Sender };
+// use crate::{ log, console_log };
+use crate::Sender;
 use crate::html::{ MESSAGE_FIELD_ID, BUTTON_SEND_MESSAGE, Html, ID_FIELD_ID };
 use crate::webrtc::RTCSocket;
 use crate::websocket::WebSocket;

@@ -8,7 +8,9 @@ use crate::html::Html;
 use crate::{ log, console_log, Sender };
 use crate::event::{ Event, Branch };
 
+// tmp -> {top, left, right} || queue
 
+#[allow(dead_code)]
 pub struct WebSocket {
 	socket: web_sys::WebSocket,
 	cbs: Vec<Closure<dyn FnMut (JsValue)>> // keep the callbacks in memory
@@ -76,6 +78,6 @@ impl WebSocket {
 	}
 
 	pub fn delete(&self) {
-		self.socket.close();
+		self.socket.close().unwrap_or(());
 	}
 }

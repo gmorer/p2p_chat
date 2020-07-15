@@ -10,6 +10,7 @@ mod webrtc;
 mod event;
 use event::{ Event, Branch };
 
+mod p2p;
 // mod cb;
 // use cb::CB;
 
@@ -74,7 +75,7 @@ async fn main_loop() {
 }
 
 #[wasm_bindgen(start)]
-pub async fn main() -> Result<(), JsValue> {
+pub async fn start() -> Result<(), JsValue> {
 	main_loop().await;
 	// connect_html(&sockets, &document);
 	// sockets.main_loop().await;

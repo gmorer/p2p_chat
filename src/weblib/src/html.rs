@@ -78,7 +78,7 @@ impl Html {
 
 	pub fn append(&self, id: &str, value: &String) {
 		if let Some(elem) = self.elements.get(&id.to_string()) {
-			elem.insert_adjacent_html("beforeend", value.as_str());
+			elem.insert_adjacent_html("beforeend", value.as_str()).unwrap_or(());
 		}
 	}
 
