@@ -15,7 +15,7 @@ crate-type = ["cdylib", "rlib"]
 wasm-bindgen = { version = "0.2.63", features = ["serde-serialize"] }
 wasm-bindgen-futures = "0.4.13"
 js-sys = "0.3.40"
-p2p_chat = { path = "../..", default-features = false }
+crossplatform = { path = "./../lib/" }
 futures = "0.3"
 web-sys = { version = "0.3.40", features = [
 	"Window",
