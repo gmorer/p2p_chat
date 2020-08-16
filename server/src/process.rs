@@ -97,12 +97,19 @@ fn send_id(addr: SocketAddr, peers: &PeerMap) -> Option<WebSocketData> {
 	Some(WebSocketData::Id(Some(id.clone())))
 }
 
+fn set_id(addr: SocketAddr, peers: &PeerMap, id: Id) -> Option<WebSocketData> {
+	let mut peers = peers.lock().unwrap();
+	peers.entry(addr).and_modify(|e| (*e).0 = id);
+	None
+}
+
 pub fn process(addr: SocketAddr, msg: WebSocketData, peers: &PeerMap) -> Option<WebSocketData> {
 	match msg {
 		WebSocketData::OfferSDP(data, paddr) => offer_sdp(addr , paddr, data, peers),
 		WebSocketData::AnswerSDP(data, paddr) => proxy(paddr, WebSocketData::AnswerSDP(data, addr), peers),
 		WebSocketData::IceCandidate(data, paddr) => proxy(paddr, WebSocketData::IceCandidate(data, addr), peers),
 		WebSocketData::Message(_) =>  broadcast_msg(msg, addr, peers),
-		WebSocketData::Id(_) => send_id(addr, peers)
+		WebSocketData::Id(Some(id)) => set_id(addr, peers, id),
+		WebSocketData::Id(None) => send_id(addr, peers)
 	}
 }

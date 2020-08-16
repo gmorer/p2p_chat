@@ -132,7 +132,8 @@ impl Event {
 			Branch::Server => {
 				html.chat_info("Connected to the server!");
 				socks.server.state = State::Connected(crate::time_now());
-				socks.server.send(Data::WsData(WebSocketData::Id(None)));
+				// Ask or set the id server side
+				socks.server.send(Data::WsData(WebSocketData::Id(socks.id)));
 				if socks.right.is_disconnected() && socks.left.is_disconnected() && socks.tmp.is_disconnected() { // add the others
 					match RTCSocket::new(&socks.server, sender, html, true).await {
 						Ok(socket) => { socks.tmp.socket = Some(Socket::WebRTC(socket)); Ok(()) },
@@ -148,12 +149,14 @@ impl Event {
 		match id.as_str() {
 			BUTTON_SEND_MESSAGE => {
 				let msg = html.get_input_value(MESSAGE_FIELD_ID);
+				let msg = msg.trim();
+				if msg.is_empty() { return Ok(()) }
 				html.set_input_value(MESSAGE_FIELD_ID, "");
 				// console_log!("need to send {}", msg);
-				html.chat_msg("Me", msg.as_str());
+				html.chat_msg("Me", msg);
 				// let rsp = WebSocketData::Message(msg);
 				// socks.server.send(Data::WsData(rsp));
-				socks.tmp.send(Data::RtcData(msg));
+				socks.tmp.send(Data::RtcData(msg.to_string()));
 				Ok(())
 			}
 			_=> Err(format!("not handled html element: id={} msg={:?}", id, msg))
