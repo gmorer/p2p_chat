@@ -8,7 +8,7 @@ mod websocket;
 mod webrtc;
 
 mod event;
-use event::{ Event, Branch };
+use event::{ Event };
 
 mod p2p;
 // mod cb;
@@ -52,7 +52,7 @@ async fn main_loop() {
 
 	let sender = Sender(sender);
 	let html = Html::new(sender.clone());
-	sender.send(Event::Disconnect(Branch::Server));
+	sender.send(Event::ServerDisconnect);
 	let mut socks = streams::Sockets::default();
 	/*
 	for_each not working with async block inside we got:receiver
@@ -68,7 +68,9 @@ async fn main_loop() {
 	*/
 	while let Some(e) = receiver.next().await {
 		if let Err(e) = e.execute(sender.clone(), &mut socks, &html).await {
-			console_log!("Execution error: {}", e);
+			let e = format!("Execution error: {}", e);
+			console_log!("{}", e);
+			html.chat_error(&e);
 		}
 	}
 	console_log!("This should not be reachable")

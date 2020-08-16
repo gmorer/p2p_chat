@@ -6,7 +6,7 @@ use crossplatform::proto::WebSocketData;
 use web_sys::{ MessageEvent };
 use crate::html::Html;
 use crate::{ log, console_log, Sender };
-use crate::event::{ Event, Branch };
+use crate::event::Event;
 
 // tmp -> {top, left, right} || queue
 
@@ -47,15 +47,15 @@ impl WebSocket {
 				.data();
 			let msg = Uint8Array::new(&msg).to_vec();
 			let msg = WebSocketData::from_u8(msg).expect("Cannot convert server response");
-			sender1.send(Event::ServerMessage(Branch::Server, msg));
+			sender1.send(Event::ServerMessage(msg));
 		}) as Box<dyn FnMut(JsValue)>);
 		let sender2 = sender.clone();
 		let connected_from_server = Closure::wrap(Box::new(move |_args: JsValue| {
-			sender2.send(Event::Connected(Branch::Server));
+			sender2.send(Event::ServerConnected);
 		}) as Box<dyn FnMut(JsValue)>);
 		let sender3 = sender.clone();
 		let disconnect_from_server = Closure::wrap(Box::new(move |_args: JsValue| {
-			sender3.send(Event::Disconnect(Branch::Server));
+			sender3.send(Event::ServerDisconnect);
 		}) as Box<dyn FnMut(JsValue)>);
 
 		/* Set the cbs */

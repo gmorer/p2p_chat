@@ -98,4 +98,8 @@ impl Html {
 	pub fn chat_info(&self, msg: &str) {
 		self.append(MESSAGE_BOX_ID, &format!("<p><i>{}</i></p>", msg));
 	}
+
+	pub fn chat_error(&self, msg: &str) {
+		self.append(MESSAGE_BOX_ID, &format!("<p><b style=\"color: red\" >{}</b></p>", msg));
+	}
 }

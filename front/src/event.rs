@@ -11,21 +11,11 @@ use crate::streams::{ Sockets, Socket, State, Pstream, Data };
 
 #[derive(Debug)]
 #[allow(dead_code)]
-pub enum Branch {
-	Server,
-	Right,
-	DRight,
-	Left,
-	Dleft
-}
-
-#[derive(Debug)]
-#[allow(dead_code)]
 pub enum Event {
 	Verification, // Created once evry xtime
-	Disconnect(Branch),
-	Connected(Branch),
-	ServerMessage(Branch, WebSocketData), // TODO: Message struct
+	ServerDisconnect,
+	ServerConnected,
+	ServerMessage(WebSocketData), // TODO: Message struct
 	Html(String, JsValue), // event from html
 	DCObj(RtcDataChannel),
 	RtcMessage(String),
@@ -36,9 +26,9 @@ impl Event {
 	pub async fn execute(self, sender: Sender, socks: &mut Sockets, html: &Html) -> Result<(), String>{
 		match self {
 			Event::Verification => Err("Getting verification".to_string()),
-			Event::Disconnect(branch) => Event::disconnect(socks, branch, html, sender),
-			Event::Connected(branch) => Event::connected(socks, branch, sender, html).await,
-			Event::ServerMessage(branch, msg) => Event::server_msg(socks, sender, msg, branch, html).await,
+			Event::ServerDisconnect => Event::disconnect(socks, html, sender),
+			Event::ServerConnected => Event::connected(socks, sender, html).await,
+			Event::ServerMessage(msg) => Event::server_msg(socks, sender, msg, html).await,
 			Event::Html(id, msg) => Event::html(socks, id, msg, html),
 			Event::DCObj(dc) => Event::dcobj(socks, dc, sender),
 			Event::RtcMessage(msg) => Event::rtc_message(msg, html),
@@ -74,7 +64,7 @@ impl Event {
 		}
 	}
 
-	async fn server_msg(socks: &mut Sockets, sender: Sender, msg: WebSocketData, branch: Branch, html: &Html) -> Result<(), String> {
+	async fn server_msg(socks: &mut Sockets, sender: Sender, msg: WebSocketData, html: &Html) -> Result<(), String> {
 		match msg {
 			WebSocketData::OfferSDP(sdp, Some(addr)) => {
 				if socks.tmp.is_connected() || socks.tmp.is_locked(None) { // rly None ?
@@ -92,9 +82,9 @@ impl Event {
 			},
 			WebSocketData::AnswerSDP(sdp, addr) => {
 				if socks.tmp.is_locked(None) {
-					return Err("The socket is locked".to_string());
+					Err("The socket is locked".to_string())
 				}
-				if let Some(Socket::WebRTC(socket)) = &mut socks.tmp.socket {
+				else if let Some(Socket::WebRTC(socket)) = &mut socks.tmp.socket {
 					socket.answer(&socks.server, &sdp, addr, sender).await.map_err(|e| format!("{:?}", e))?;
 					socks.tmp.state = State::Locked(addr);
 					Ok(())
@@ -104,45 +94,36 @@ impl Event {
 			},
 			WebSocketData::IceCandidate(candidate, addr) => {
 				if !socks.tmp.is_locked(Some(addr)) {
-					return Err(format!("The socket should be locked"));
+					Err("The socket should be locked".to_string())
 				}
-				if let Some(Socket::WebRTC(socket)) = &mut socks.tmp.socket {
+				else if let Some(Socket::WebRTC(socket)) = &mut socks.tmp.socket {
 					socket.ice_candidate(&candidate).await.map_err(|e| format!("{:?}", e))
 				} else {
 					Err("No soclet object".to_string())
 				}
-				// console_log!("receiveing IceCandidate: {:?} {:?}", candidate, addr);
-				// incomming_ice_candidate(socks, &candidate, addr).await;
 			},
 
 			WebSocketData::Id(Some(id)) => {
 				socks.id = Some(id);
 				html.fill(ID_FIELD_ID, &id.0.to_string());
-				// html.chat_info(format!("receiving our id: {}", id.0).as_str());
 				Ok(())
 			}
-			_ => Err(format!("Cannot handle from {:?} : {:?}", branch, msg))
+			_ => Err(format!("Cannot handle from: {:?}", msg))
 		}
 	}
 
-	async fn connected(socks: &mut Sockets, branch: Branch, sender: Sender, html: &Html) -> Result<(), String> {
+	async fn connected(socks: &mut Sockets, sender: Sender, html: &Html) -> Result<(), String> {
 		// console_log!("Connected: {:?}", branch);
-		match branch {
-			// Branch::Server => socks.server.state = State::Connected(42 as u64),
-			Branch::Server => {
-				html.chat_info("Connected to the server!");
-				socks.server.state = State::Connected(crate::time_now());
-				// Ask or set the id server side
-				socks.server.send(Data::WsData(WebSocketData::Id(socks.id)));
-				if socks.right.is_disconnected() && socks.left.is_disconnected() && socks.tmp.is_disconnected() { // add the others
-					match RTCSocket::new(&socks.server, sender, html, true).await {
-						Ok(socket) => { socks.tmp.socket = Some(Socket::WebRTC(socket)); Ok(()) },
-						Err(e) => Err(format!("Error while creating socket: {:?}", e))
-					}
-				} else { Ok(()) }
-			},
-			_ => Err("Receveing connection from nowhere".to_string())
-		}
+		html.chat_info("Connected to the server!");
+		socks.server.state = State::Connected(crate::time_now());
+		// Ask or set the id server side
+		socks.server.send(Data::WsData(WebSocketData::Id(socks.id)));
+		if socks.right.is_disconnected() && socks.left.is_disconnected() && socks.tmp.is_disconnected() { // add the others
+			match RTCSocket::new(&socks.server, sender, html, true).await {
+				Ok(socket) => { socks.tmp.socket = Some(Socket::WebRTC(socket)); Ok(()) },
+				Err(e) => Err(format!("Error while creating socket: {:?}", e))
+			}
+		} else { Ok(()) }
 	}
 
 	fn html(socks: &Sockets, id: String, msg: JsValue, html: &Html) -> Result<(), String> {
@@ -163,17 +144,12 @@ impl Event {
 		}
 	}
 
-	fn disconnect(socks: &mut Sockets, branch: Branch, html: &Html, sender: Sender) -> Result<(), String> {
-		match branch {
-			Branch::Server => {
-				if let Some(Socket::WebSocket(server)) = &socks.server.socket {
-					server.delete();
-				}
-				let socket = WebSocket::new(sender, html)?;
-				socks.server.socket = Some(Socket::WebSocket(socket));
-				Ok(())
-			}
-			_ => Err(format!("unsupported disconnect branch: {:?}", branch))
+	fn disconnect(socks: &mut Sockets, html: &Html, sender: Sender) -> Result<(), String> {
+		if let Some(Socket::WebSocket(server)) = &socks.server.socket {
+			server.delete();
 		}
+		let socket = WebSocket::new(sender, html)?;
+		socks.server.socket = Some(Socket::WebSocket(socket));
+		Ok(())
 	}
 }
