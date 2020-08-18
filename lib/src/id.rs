@@ -1,5 +1,6 @@
 // use std::convert::TryInto;
 use serde::{Serialize, Deserialize};
+use std::convert::TryFrom;
 
 #[derive(PartialEq, Debug)]
 pub enum Axe {
@@ -7,6 +8,10 @@ pub enum Axe {
 	Left,
 	Right
 }
+
+const LETTERS: &str = "abcdefghijklmnopqrstuvwxyzABCDEFGHIKKLMNOPQRSTUVWXYZ0123456789-_"; 
+const LETTERS_LENGTH: u64 = 64;
+const LENGTHS_BITS: u64 = 6;
 
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize, Copy, Clone)]
 pub struct Id(pub u64);
@@ -18,6 +23,22 @@ impl Id {
 
 	pub fn get_lat(&self) -> i32 {
 		(self.0 >> 32) as i32
+	}
+
+	pub fn to_name(&self) -> String {
+		let mut num = self.0;
+
+		let mut result = String::new();
+		while num != 0 {
+			num = num >> LENGTHS_BITS;
+			let character = num & (LETTERS_LENGTH - 1);
+			assert!(character < LETTERS_LENGTH, "charachter superior of sizeof_letters: {}", character);
+			// unwrap is safe with the assert earlier
+			let character = usize::try_from(character).unwrap();
+			let character = LETTERS.chars().skip(character).next().unwrap();
+			result.push(character);
+		}
+		result
 	}
 
 	pub fn get_long(&self) -> i32 {
@@ -53,6 +74,7 @@ impl Id {
 		}
 	}
 }
+
 
 #[cfg(test)]
 mod tests {

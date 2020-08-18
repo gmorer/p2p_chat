@@ -43,13 +43,17 @@ impl Event {
 
 	fn rtc_state(socks: &mut Sockets, state: bool, html: &Html) -> Result<(), String> {
 		match state {
-			true => html.chat_info("Connection openned with Peer"),
+			true => {
+				// TODO: move tmp to a branch
+				html.chat_info("Connection openned with Peer");
+			}
 			false => {
 				html.chat_info("Connection closed with Peer");
 				if let Some(Socket::WebRTC(socket)) = &mut socks.tmp.socket {
 					socket.delete();
+					socks.tmp = Pstream { state: State::Disconnected(None), socket: None };
 				}
-				socks.tmp = Pstream { state: State::Disconnected(None), socket: None};
+				// TODO: remove 
 			}
 		};
 		Ok(())
@@ -105,7 +109,8 @@ impl Event {
 
 			WebSocketData::Id(Some(id)) => {
 				socks.id = Some(id);
-				html.fill(ID_FIELD_ID, &id.0.to_string());
+				html.fill(ID_FIELD_ID, &id.to_name());
+				html.chat_info(&format!("Your id is: {}", id.0));
 				Ok(())
 			}
 			_ => Err(format!("Cannot handle from: {:?}", msg))
