@@ -1,6 +1,6 @@
 // use std::convert::TryInto;
 use serde::{Serialize, Deserialize};
-use std::convert::TryFrom;
+use std::convert::{ TryFrom, TryInto };
 
 #[derive(PartialEq, Debug)]
 pub enum Axe {
@@ -30,8 +30,8 @@ impl Id {
 
 		let mut result = String::new();
 		while num != 0 {
-			num = num >> LENGTHS_BITS;
 			let character = num & (LETTERS_LENGTH - 1);
+			num = num >> LENGTHS_BITS;
 			assert!(character < LETTERS_LENGTH, "charachter superior of sizeof_letters: {}", character);
 			// unwrap is safe with the assert earlier
 			let character = usize::try_from(character).unwrap();
@@ -39,6 +39,18 @@ impl Id {
 			result.push(character);
 		}
 		result
+	}
+
+	pub fn from_name(name: &str) -> Self {
+		let mut res: u64 = 0;
+		let mut decal = 0;
+		for c in name.chars() {
+			assert!(decal < 64, "from_name: overflow of u64");
+			let index: u64 = LETTERS.find(c).expect("Invalid letter").try_into().expect("is that a 128 bits computer?"); // TODO
+			res += index << decal;
+			decal += LENGTHS_BITS;
+		}
+		Id(res)
 	}
 
 	pub fn get_long(&self) -> i32 {
@@ -97,6 +109,7 @@ mod tests {
 			assert_eq!(id.get_lat(), lat);
 		}
 	}
+
 	#[test]
 	fn distance_test()
 	{
@@ -130,5 +143,25 @@ mod tests {
 		for (long, lat, axe) in coords.into_iter() {
 			assert_eq!(base.get_axe(Id::new(long, lat)), axe);
 		}
+	}
+
+	#[test]
+	fn name() {
+		let ids = vec![
+			Id(6271115376183670274),
+			Id(565615288521199599),
+			Id(13002873412946856394),
+			Id(1773930644391763429),
+			Id(5334177414139328763),
+			Id(4189939283775673285),
+			Id(6255372476492508914),
+			Id(9714029801535817162),
+			Id(17991802674248729776),
+			Id(10093706009961291260),
+		];
+
+		for id in ids {
+			assert_eq!(id.0, Id::from_name(id.to_name().as_str()).0);
+ 		}
 	}
 }

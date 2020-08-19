@@ -16,3 +16,12 @@ i {
 	padding-left: 1em;
 	padding-right: 1em;
 }
+
+.content {
+	display: flex;
+	justify-content: space-evenly;
+}
+
+.title {
+	text-align: center;
+}

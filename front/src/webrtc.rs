@@ -16,6 +16,7 @@ use web_sys::{
 };
 use wasm_bindgen_futures::JsFuture;
 use crossplatform::proto::{ WebSocketData, IceCandidateStruct };
+use crossplatform::id::Id;
 use crate::{ log, console_log, Sender };
 use crate::streams::{ Data, Pstream };
 use crate::event::Event;
@@ -62,9 +63,7 @@ impl RTCSocket {
 			Box::new(move |ev: JsValue| {
 				match MessageEvent::from(ev).data().as_string() {
 					Some(message) => {
-						sender.send(Event::RtcMessage(message))
-						// console_log!("receving: {:?}", message);
-						// dc_clone.send_with_str("Pong from pc1.dc!").unwrap();
+						sender.send(Event::TmpId(message))
 					}
 					None => {}
 				}
@@ -133,7 +132,7 @@ impl RTCSocket {
 		Ok(())
 	}
 
-	pub async fn answer(&mut self, server: &Pstream, sdp: &String, addr: SocketAddr, sender: Sender) -> Result<(), JsValue> {
+	pub async fn answer(&mut self, server: &Pstream, sdp: &String, addr: SocketAddr, sender: Sender, id: Id) -> Result<(), JsValue> {
 		let mut answer_obj = RtcSessionDescriptionInit::new(RtcSdpType::Answer);
 		answer_obj.sdp(sdp.as_str());
 		JsFuture::from(self.conn.set_remote_description(&answer_obj)).await?;
@@ -161,8 +160,12 @@ impl RTCSocket {
 		}) as Box<dyn FnMut(JsValue)>);
 		self.channel.set_onclose(Some(cb.as_ref().unchecked_ref()));
 		self.cbs.push(cb);
+		let dc_clone = self.channel.clone();
 		let cb = Closure::wrap(Box::new(move |_arg: JsValue| {
-			sender.send(Event::RtcState(true))
+			sender.send(Event::RtcState(true));
+			if let Err(e) = dc_clone.send_with_str(id.to_name().as_str()) {
+				console_log!("error while sending to peer: {:?}", e);
+			}
 		}) as Box<dyn FnMut(JsValue)>);
 		self.channel.set_onopen(Some(cb.as_ref().unchecked_ref()));
 		self.cbs.push(cb);
@@ -181,13 +184,14 @@ impl RTCSocket {
 		Ok(())
 	}
 
-	pub fn set_dc(&mut self, dc: RtcDataChannel, sender: Sender) -> Result<(), JsValue> {
+	// Data channel
+	pub fn set_dc(&mut self, dc: RtcDataChannel, sender: Sender, id: Id) -> Result<(), JsValue> {
 		let sender_cl = sender.clone();
 		let onmessage_callback =
 			Closure::wrap(
 				Box::new(move |ev: JsValue| {
 					match MessageEvent::from(ev).data().as_string() {
-						Some(message) => sender_cl.send(Event::RtcMessage(message)),
+						Some(message) => sender_cl.send(Event::TmpId(message)),
 						None => {}
 					}
 				}) as Box<dyn FnMut(JsValue)>,
@@ -201,8 +205,12 @@ impl RTCSocket {
 		}) as Box<dyn FnMut(JsValue)>);
 		dc.set_onclose(Some(cb.as_ref().unchecked_ref()));
 		self.cbs.push(cb);
+		let dc_clone = dc.clone();
 		let cb = Closure::wrap(Box::new(move |_arg: JsValue| {
 			sender.send(Event::RtcState(true));
+			if let Err(e) = dc_clone.send_with_str(id.to_name().as_str()) { // set id
+				console_log!("error while sending to peer: {:?}", e);
+			}
 		}) as Box<dyn FnMut(JsValue)>);
 		dc.set_onopen(Some(cb.as_ref().unchecked_ref()));
 		self.cbs.push(cb);

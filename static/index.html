@@ -10,14 +10,25 @@
 <body>
 	<script type="module" src="/index.js"></script>
 
-	<h1>P2P Chat</h1>
-	<div id="message_box">
-	</div>
-	<input type="text" id="message_field"></input>
-	<button id="send_message">Send message</button>
+	<h1 class="title">P2P Chat</h1>
 	<div class="id_field">
-		id:
+		Name:
 		<span id="id_field">None</span>
+	</div>
+	<div class="content">
+		<div id="tchat">
+			<div id="message_box">
+			</div>
+			<input type="text" id="message_field"></input>
+			<button id="send_message">Send message</button>
+		</div>
+		<div class="peers">
+			<p>tmp:&nbsp;<span id="tmp_peer">None</span></p>
+			<p><b>Top:&nbsp;</b><span id="top_peer">None</span></p>
+			<p><b>Left:&nbsp;</b><span id="left_peer">None</span></p>
+			<p><b>Bot:&nbsp;</b><span id="bot_peer">None</span></p>
+			<p><b>cache:&nbsp;</b><span id="cache_peer">None</span></p>
+		</div>
 	</div>
 </body>
 

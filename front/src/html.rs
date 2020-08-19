@@ -5,11 +5,18 @@ use web_sys::{ Document, HtmlElement, window, Window, HtmlInputElement, Element 
 use crate::event::{ Event };
 use crate::Sender;
 
-
-pub const BUTTON_SEND_MESSAGE: &'static str = "send_message";
-pub const MESSAGE_FIELD_ID: &'static str = "message_field";
-pub const MESSAGE_BOX_ID: &'static str = "message_box";
-pub const ID_FIELD_ID: &'static str = "id_field";
+// Html element ids
+pub mod ids {
+	pub const BUTTON_SEND_MESSAGE: &'static str = "send_message";
+	pub const MESSAGE_FIELD_ID: &'static str = "message_field";
+	pub const MESSAGE_BOX_ID: &'static str = "message_box";
+	pub const ID_FIELD_ID: &'static str = "id_field";
+	pub const TMP_PEER_ID: &'static str = "tmp_peer";
+	pub const TOP_PEER_ID: &'static str = "top_peer";
+	pub const LEFT_PEER_ID: &'static str = "left_peer";
+	pub const RIGHT_PEER_ID: &'static str = "right_peer";
+	pub const CACHE_PEER_ID: &'static str = "cache_peer";
+}
 
 // TODO: global input hashmap (gota go fast)
 
@@ -36,10 +43,15 @@ impl Html {
 		let window = window().expect("Cannot get the window object");
 		let document = window.document().expect("window should have a document");
 		let ids = [
-			(MESSAGE_FIELD_ID, false),
-			(MESSAGE_BOX_ID, false),
-			(BUTTON_SEND_MESSAGE, true),
-			(ID_FIELD_ID, false)
+			(ids::MESSAGE_FIELD_ID, false),
+			(ids::MESSAGE_BOX_ID, false),
+			(ids::BUTTON_SEND_MESSAGE, true),
+			(ids::ID_FIELD_ID, false),
+			(ids::TMP_PEER_ID, false),
+			(ids::TOP_PEER_ID, false),
+			(ids::LEFT_PEER_ID, false),
+			(ids::RIGHT_PEER_ID, false),
+			(ids::CACHE_PEER_ID, false)
 		];
 		for (id, click) in ids.iter() {
 			if let Some(element) = document.get_element_by_id(id) {
@@ -76,30 +88,30 @@ impl Html {
 		}
 	}
 
-	pub fn append(&self, id: &str, value: &String) {
+	pub fn append(&self, id: &str, value: &str) {
 		if let Some(elem) = self.elements.get(&id.to_string()) {
-			elem.insert_adjacent_html("beforeend", value.as_str()).unwrap_or(());
+			elem.insert_adjacent_html("beforeend", value).unwrap_or(());
 		}
 	}
 
-	pub fn fill(&self, id: &str, value: &String) {
+	pub fn fill(&self, id: &str, value: &str) {
 		if let Some(elem) = self.elements.get(&id.to_string()) {
-			elem.set_inner_html(value.as_str());
+			elem.set_inner_html(value);
 		}
 	}
 
 	pub fn chat_msg(&self, user: &str, msg: &str) {
-		self.append(MESSAGE_BOX_ID, &format!("<p><b>{}: </b> {}</p>", user, msg));
-		if let Some(elem) = self.elements.get(&MESSAGE_BOX_ID.to_string()) {
+		self.append(ids::MESSAGE_BOX_ID, format!("<p><b>{}: </b> {}</p>", user, msg).as_str());
+		if let Some(elem) = self.elements.get(&ids::MESSAGE_BOX_ID.to_string()) {
 			elem.set_scroll_top(elem.scroll_height());
 		}
 	}
 
 	pub fn chat_info(&self, msg: &str) {
-		self.append(MESSAGE_BOX_ID, &format!("<p><i>{}</i></p>", msg));
+		self.append(ids::MESSAGE_BOX_ID, format!("<p><i>{}</i></p>", msg).as_str());
 	}
 
 	pub fn chat_error(&self, msg: &str) {
-		self.append(MESSAGE_BOX_ID, &format!("<p><b style=\"color: red\" >{}</b></p>", msg));
+		self.append(ids::MESSAGE_BOX_ID, format!("<p><b style=\"color: red\" >{}</b></p>", msg).as_str());
 	}
 }

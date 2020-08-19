@@ -5,6 +5,8 @@ use crossplatform::id::Id;
 use crate::{ log, console_log };
 use crate::webrtc::RTCSocket;
 use crate::websocket;
+use crate::p2p::Network;
+use crate::html::Html;
 
 pub enum Data {
 	WsData(WebSocketData),
@@ -88,24 +90,22 @@ impl Pstream {
 }
 
 // TODO all mutex
-pub struct Sockets {
+pub struct Sockets<'a> {
 	pub id: Option<Id>,
 	pub server: Pstream,
-	pub right: Pstream,
 	// pub dright: Option<Pstream>,
-	pub left: Pstream,
 	// pub dleft: Option<Pstream>
+	pub network: Network<'a>,
 	pub tmp: Pstream
 }
 
-impl Sockets {
-	pub fn default() -> Self {
+impl<'a> Sockets<'a> {
+	pub fn default(html: &'a Html) -> Self {
 		Sockets {
 			server: Pstream { state: State::Disconnected(None), socket: None },
 			// server: Some(Pstream::from_ws(server_ws)),
-			right: Pstream { state: State::Disconnected(None), socket: None},
 			// dright: None,
-			left: Pstream { state: State::Disconnected(None), socket: None},
+			network: Network::new(html),
 			tmp: Pstream { state: State::Disconnected(None), socket: None},
 			id: None
 			// dleft: None
