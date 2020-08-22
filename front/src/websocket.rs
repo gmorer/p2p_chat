@@ -2,7 +2,7 @@ use web_sys::BinaryType;
 use wasm_bindgen::{ JsValue, JsCast };
 use wasm_bindgen::closure::Closure;
 use js_sys::Uint8Array;
-use crossplatform::proto::WebSocketData;
+use crossplatform::proto_ws::WebSocketData;
 use web_sys::{ MessageEvent };
 use crate::html::Html;
 use crate::{ log, console_log, Sender };

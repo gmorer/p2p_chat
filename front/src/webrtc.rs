@@ -12,10 +12,11 @@ use web_sys::{
 	RtcPeerConnectionIceEvent,
 	RtcDataChannelEvent,
 	RtcSessionDescriptionInit,
-	RtcDataChannel
+	RtcDataChannel,
+	RtcDataChannelType
 };
 use wasm_bindgen_futures::JsFuture;
-use crossplatform::proto::{ WebSocketData, IceCandidateStruct };
+use crossplatform::proto_ws::{ WebSocketData, IceCandidateStruct };
 use crossplatform::id::Id;
 use crate::{ log, console_log, Sender };
 use crate::streams::{ Data, Pstream };
@@ -24,10 +25,11 @@ use crate::html::Html;
 
 const ICE_SERVERS: &str = "[{\"urls\": \"stun:stun.l.google.com:19302\"}]";
 
+#[derive(Debug)]
 pub struct RTCSocket {
 	conn: RtcPeerConnection,
-	channel: RtcDataChannel,
-	cbs: Vec<Closure<dyn FnMut (JsValue)>> // keep the callbacks in memory
+	pub channel: RtcDataChannel,
+	pub cbs: Vec<Closure<dyn FnMut (JsValue)>> // keep the callbacks in memory
 }
 
 impl Clone for RTCSocket {
@@ -41,8 +43,9 @@ impl Clone for RTCSocket {
 }
 
 impl RTCSocket {
-	pub fn send(&self, data: &String) {
-		if let Err(e) = self.channel.send_with_str(data.as_str()) {
+	pub fn send(&self, data: &[u8]) {
+		console_log!("sending: {:?}", data);
+		if let Err(e) = self.channel.send_with_u8_array(data) {
 			console_log!("error while sending to peer: {:?}", e);
 		}
 	}
@@ -57,6 +60,7 @@ impl RTCSocket {
 
 		/* Create the Data Channel */
 		let data_channel = peer_connection.create_data_channel("my-data-channel");
+		data_channel.set_binary_type(RtcDataChannelType::Arraybuffer);
 		// let dc_clone = data_channel.clone();
 		let onmessage_callback =
 		Closure::wrap(
@@ -69,6 +73,7 @@ impl RTCSocket {
 				}
 			}) as Box<dyn FnMut(JsValue)>,
 		);
+		console_log!("Put false onmessage");
 		data_channel.set_onmessage(Some(onmessage_callback.as_ref().unchecked_ref()));
 		cbs.push(onmessage_callback);
 
@@ -125,7 +130,9 @@ impl RTCSocket {
 
 		/* Handle OK connection */
 		let ondatachannel_callback = Closure::wrap(Box::new(move |ev: JsValue| {
-			sender.send(Event::DCObj(RtcDataChannelEvent::from(ev).channel()))
+			let channel = RtcDataChannelEvent::from(ev).channel();
+			channel.set_binary_type(RtcDataChannelType::Arraybuffer);
+			sender.send(Event::DCObj(channel));
 		}) as Box<dyn FnMut(JsValue)>);
 		self.conn.set_ondatachannel(Some(ondatachannel_callback.as_ref().unchecked_ref()));
 		self.cbs.push(ondatachannel_callback);
@@ -158,6 +165,7 @@ impl RTCSocket {
 		let cb = Closure::wrap(Box::new(move |_arg: JsValue| {
 			sender_cl.send(Event::RtcState(false));
 		}) as Box<dyn FnMut(JsValue)>);
+		console_log!("Put false onclose");
 		self.channel.set_onclose(Some(cb.as_ref().unchecked_ref()));
 		self.cbs.push(cb);
 		let dc_clone = self.channel.clone();
@@ -196,6 +204,7 @@ impl RTCSocket {
 					}
 				}) as Box<dyn FnMut(JsValue)>,
 			);
+		console_log!("Put false onmessage");
 		dc.set_onmessage(Some(onmessage_callback.as_ref().unchecked_ref()));
 		self.cbs.push(onmessage_callback);
 
@@ -203,6 +212,7 @@ impl RTCSocket {
 		let cb = Closure::wrap(Box::new(move |_arg: JsValue| {
 			sender_cl.send(Event::RtcState(false));
 		}) as Box<dyn FnMut(JsValue)>);
+		console_log!("Put false onclose");
 		dc.set_onclose(Some(cb.as_ref().unchecked_ref()));
 		self.cbs.push(cb);
 		let dc_clone = dc.clone();

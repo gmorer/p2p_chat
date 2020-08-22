@@ -1,5 +1,5 @@
 // use protocols::WebSocketData;
-use crossplatform::proto::WebSocketData;
+use crossplatform::proto_ws::WebSocketData;
 use std::net::SocketAddr;
 use std::collections::HashMap;
 use tungstenite::Message;

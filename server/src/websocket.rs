@@ -8,7 +8,7 @@ use futures::channel::mpsc::unbounded;
 use hyper::upgrade::Upgraded;
 use hyper::{Body, Request, Response, StatusCode};
 use headers::HeaderMapExt;
-use crossplatform::proto::WebSocketData;
+use crossplatform::proto_ws::WebSocketData;
 use crossplatform::id::Id;
 use tungstenite::Message;
 use tungstenite::error::Error;

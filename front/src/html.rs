@@ -31,6 +31,7 @@ fn on_click(elem: &Element, id: &'static str, sender: Sender) {
 	open_handler.forget();
 }
 
+#[derive(Debug)]
 pub struct Html {
 	pub elements: HashMap<String, Element>,
 	pub window: Window,
@@ -70,6 +71,12 @@ impl Html {
 		ret
 	}
 
+	fn chat_bottom_scroll(&self) {
+		if let Some(elem) = self.elements.get(&ids::MESSAGE_BOX_ID.to_string()) {
+			elem.set_scroll_top(elem.scroll_height());
+		}
+	}
+
 	pub fn get_input_value(&self, id: &str) -> String {
 		if let Some(elem) = self.elements.get(&id.to_string()) {
 			let input = elem
@@ -102,16 +109,21 @@ impl Html {
 
 	pub fn chat_msg(&self, user: &str, msg: &str) {
 		self.append(ids::MESSAGE_BOX_ID, format!("<p><b>{}: </b> {}</p>", user, msg).as_str());
-		if let Some(elem) = self.elements.get(&ids::MESSAGE_BOX_ID.to_string()) {
-			elem.set_scroll_top(elem.scroll_height());
-		}
+		self.chat_bottom_scroll();
 	}
 
 	pub fn chat_info(&self, msg: &str) {
 		self.append(ids::MESSAGE_BOX_ID, format!("<p><i>{}</i></p>", msg).as_str());
+		self.chat_bottom_scroll();
 	}
 
 	pub fn chat_error(&self, msg: &str) {
 		self.append(ids::MESSAGE_BOX_ID, format!("<p><b style=\"color: red\" >{}</b></p>", msg).as_str());
+		self.chat_bottom_scroll();
+	}
+
+	pub fn chat_private(&self, user: &str, msg: &str) {
+		self.append(ids::MESSAGE_BOX_ID, format!("<p><i><b>{}: </b> {}</i></p>", user, msg).as_str());
+		self.chat_bottom_scroll();
 	}
 }

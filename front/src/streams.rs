@@ -1,5 +1,5 @@
 use std::net::SocketAddr;
-use crossplatform::proto::WebSocketData;
+use crossplatform::proto_ws::WebSocketData;
 use crossplatform::id::Id;
 
 use crate::{ log, console_log };
@@ -7,6 +7,8 @@ use crate::webrtc::RTCSocket;
 use crate::websocket;
 use crate::p2p::Network;
 use crate::html::Html;
+
+// Do we need this file ?
 
 pub enum Data {
 	WsData(WebSocketData),
@@ -42,7 +44,7 @@ impl Pstream {
 		};
 		match (&self.socket, &data) {
 			(Some(Socket::WebSocket(socket)), Data::WsData(data)) => socket.send(data),
-			(Some(Socket::WebRTC(socket)), Data::RtcData(data)) => socket.send(&data),
+			(Some(Socket::WebRTC(socket)), Data::RtcData(data)) => socket.send(data.as_str().as_bytes()),
 			_ =>
 				console_log!("Invalid data type for websocket")
 		};
@@ -91,12 +93,12 @@ impl Pstream {
 
 // TODO all mutex
 pub struct Sockets<'a> {
-	pub id: Option<Id>,
+	pub id: Option<Id>, // Should be in network
 	pub server: Pstream,
-	// pub dright: Option<Pstream>,
-	// pub dleft: Option<Pstream>
 	pub network: Network<'a>,
-	pub tmp: Pstream
+
+	// TODO: Multiples tmp?
+	pub tmp: Pstream // should be in Network
 }
 
 impl<'a> Sockets<'a> {
