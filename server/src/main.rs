@@ -1,5 +1,6 @@
 #[cfg(feature = "full")]
 use std::str;
+use std::env;
 use std::{
 	collections::HashMap,
 	net::SocketAddr,
@@ -28,8 +29,12 @@ type PeerMap = Arc<Mutex<HashMap<SocketAddr, (Id, Tx)>>>;
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
 // const ADDR: &str = "127.0.0.1:8088";
-const ADDR: &str = "[::1]:8088";
-const STATIC_FOLDER: &str = "./static/";
+const ADDR_KEY: &str = "P2P_ADDR";
+const ADDR_DFL: &str = "127.0.0.1";
+const PORT_KEY: &str = "PORT";
+const PORT_DFL: &str = "8088";
+const STATIC_FOLDER_KEY: &str = "P2P_STATIC_FILES";
+const STATIC_FOLDER_DFL: &str = "./static/";
 
 async fn shutdown_signal() {
 	// Wait for the CTRL+C signal
@@ -49,10 +54,11 @@ pub async fn send_static(req: Request<Body>) -> Result<Response<Body>> {
 		"wasm" => "application/wasm",
 		_ => ""
 	};
+	let static_folder = env::var(STATIC_FOLDER_KEY).unwrap_or(STATIC_FOLDER_DFL.to_string());
 	// TODO: Range header
-	let file = match File::open(format!("{}/{}", STATIC_FOLDER, uri)).await {
+	let file = match File::open(format!("{}/{}", static_folder, uri)).await {
 		Ok(file) => file,
-		Err(_) => File::open(format!("{}/{}", STATIC_FOLDER, "index.html")).await.expect(&format!("cannot find index.html in {}", STATIC_FOLDER))
+		Err(_) => File::open(format!("{}/{}", static_folder, "index.html")).await.expect(&format!("cannot find index.html in {}", static_folder))
 	};
 	let stream = FramedRead::new(file, BytesCodec::new());
 	let body = Body::wrap_stream(stream);
@@ -77,8 +83,10 @@ async fn main() -> Result<()> {
 	// println!("{}", data.data);
 	
 	let peers = PeerMap::new(Mutex::new(HashMap::new()));
-	
-	let addr = ADDR.parse().expect("Invalid server address");
+	let addr = env::var(ADDR_KEY).unwrap_or(ADDR_DFL.to_string());
+	let port = env::var(PORT_KEY).unwrap_or(PORT_DFL.to_string());
+	let addr = format!("{}:{}", addr, port);
+	// let addr = format!("{}:{}", addr, port).parse().expect("Invalid server address");
 	let new_service = make_service_fn(move |conn: &AddrStream| {
 			// println!("{:?}", conn.remote_addr());
 			let addr = conn.remote_addr();
@@ -88,8 +96,9 @@ async fn main() -> Result<()> {
 			}
 		});
 
-	let server = Server::bind(&addr).serve(new_service);
+	let server = Server::bind(&addr.parse().expect(&format!("Invalid server address: {}", addr))).serve(new_service);
 	let graceful = server.with_graceful_shutdown(shutdown_signal());
+	println!("Listening on {}", addr);
 	if let Err(e) = graceful.await {
 		eprintln!("server error: {}", e);
 	}
