@@ -6,6 +6,7 @@ use tungstenite::Message;
 use futures::channel::mpsc::UnboundedSender;
 use crate::PeerMap;
 use crate::Id;
+use crate::log_err;
 
 /* WebSocketData to Message
 let rsp = match rsp.into_u8() {
@@ -31,7 +32,7 @@ fn broadcast_msg(msg: WebSocketData, addr: SocketAddr, peers: &PeerMap) -> Optio
 		Ok(resp) => {
 			let resp = Message::Binary(resp);
 			for recp in broadcast_recipients {
-				recp.unbounded_send(resp.clone()).unwrap();
+				log_err(recp.unbounded_send(resp.clone()));
 			};
 		}
 		Err(e) => eprintln!("error while !parsing message {}", e)
@@ -73,7 +74,7 @@ fn offer_sdp(addr: SocketAddr, paddr: Option<SocketAddr>, data: String, peers: &
 	println!("got a psender");
 	let rsp = WebSocketData::OfferSDP(data, Some(addr));
 	match rsp.into_u8() {
-		Ok(rsp) => { psender.unbounded_send(Message::binary(rsp)); },
+		Ok(rsp) => log_err(psender.unbounded_send(Message::binary(rsp))),
 		Err(e) => eprintln!("Error while creating data from msg: {}", e)
 	};
 	None
@@ -85,7 +86,7 @@ fn proxy(paddr: SocketAddr, msg: WebSocketData, peers: &PeerMap) -> Option<WebSo
 	let (_id, psender) = peers.get(&paddr)?;
 
 	match msg.into_u8() {
-		Ok(rsp) => { psender.unbounded_send(Message::Binary(rsp)); },
+		Ok(rsp) => log_err(psender.unbounded_send(Message::Binary(rsp))),
 		Err(e) => eprintln!("Error while creating data from msg: {}", e)
 	};
 	None

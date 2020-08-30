@@ -16,6 +16,7 @@ use crate::process::process;
 
 use crate::PeerMap;
 use crate::Result;
+use crate::log_err;
 
 async fn upgrade(peers: PeerMap, addr: SocketAddr, upgraded: Upgraded) {
 	// transform hyper upgraded to tungstenit stream
@@ -55,7 +56,7 @@ async fn upgrade(peers: PeerMap, addr: SocketAddr, upgraded: Upgraded) {
 			};
 			// TODO: remove those warning
 			match peers.lock().unwrap().get(&addr) {
-				Some((_id, sender)) => { sender.unbounded_send(rsp); },
+				Some((_id, sender)) => log_err(sender.unbounded_send(rsp)),
 				None => {
 					eprintln!("Cannot a reply to a phantom");
 					return future::err(Error::Protocol(std::borrow::Cow::Borrowed("Internal Error")));

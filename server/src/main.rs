@@ -4,7 +4,7 @@ use std::env;
 use std::{
 	collections::HashMap,
 	net::SocketAddr,
-	sync::{Arc, Mutex},
+	sync::{Arc, Mutex}
 };
 use std::path::Path;
 use std::ffi::OsStr;
@@ -35,6 +35,12 @@ const PORT_KEY: &str = "PORT";
 const PORT_DFL: &str = "8088";
 const STATIC_FOLDER_KEY: &str = "P2P_STATIC_FILES";
 const STATIC_FOLDER_DFL: &str = "./static/";
+
+fn log_err<T: core::fmt::Display>(arg: std::result::Result<(), T>) {
+	if let Err(e) = arg {
+		eprintln!("Unhandled error: {}", e);
+	}
+}
 
 async fn shutdown_signal() {
 	// Wait for the CTRL+C signal
