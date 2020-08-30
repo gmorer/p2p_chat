@@ -64,6 +64,7 @@ impl Event {
 		}
 	}
 
+	// True version is a duplicat fo tmp_i
 	fn rtc_state(socks: &mut Sockets, state: bool, html: &Html) -> Result<(), String> {
 		match state {
 			true => {

@@ -72,20 +72,18 @@ impl<'a> Network<'a> {
 	}
 
 	pub fn insert(&mut self, mut socket: RTCSocket, id: Id, sender: Sender) -> Option<()> {
-		// TODO: change callbacks with the id inside
-		let distance = self.id?.distance(&id);
+		let self_id = self.id?;
+		let distance = self_id.distance(&id);
 		new_cb(id, sender, &mut socket);
 		let peer = Peer { id, socket };
-		match self.id?.get_axe(id) {
+		match self_id.get_axe(id) {
 			Axe::Top => {
 				match &self.top {
 					Some(top) => {
-						if self.id?.distance(&top.id) > distance {
-							self.html.chat_info("Put in on the top");
+						if self_id.distance(&top.id) > distance {
 							let peer = Some(peer);
 							self.peer_cache.push(std::mem::replace(&mut self.top, peer)?);
 						} else {
-							self.html.chat_info("Put in on the top nut cache");
 							self.peer_cache.push(peer)
 						}
 					},
@@ -95,12 +93,10 @@ impl<'a> Network<'a> {
 			Axe::Right => {
 				match &self.right {
 					Some(right) => {
-						if self.id?.distance(&right.id) > distance {
-							self.html.chat_info("Put in on the right");
+						if self_id.distance(&right.id) > distance {
 							let peer = Some(peer);
 							self.peer_cache.push(std::mem::replace(&mut self.right, peer)?);
-						} else {// TODO: Add deconncetion callback with the id
-							self.html.chat_info("Put in on the right but cache");
+						} else {
 							self.peer_cache.push(peer)
 						}
 					},
@@ -110,12 +106,10 @@ impl<'a> Network<'a> {
 			Axe::Left => {
 				match &self.left {
 					Some(left) => {
-						if self.id?.distance(&left.id) > distance {
-							self.html.chat_info("Put in on the left");
+						if self_id.distance(&left.id) > distance {
 							let peer = Some(peer);
 							self.peer_cache.push(std::mem::replace(&mut self.left, peer)?);
 						} else {
-							self.html.chat_info("Put in on the left but cache");
 							self.peer_cache.push(peer)
 						}
 					},
