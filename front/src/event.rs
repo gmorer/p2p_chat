@@ -10,6 +10,7 @@ use crate::html::{ ids, Html };
 use crate::webrtc::RTCSocket;
 use crate::websocket::WebSocket;
 use crate::streams::{ Sockets, Socket, State, Pstream, Data };
+use crate::p2p::Network;
 
 #[derive(Debug)]
 #[allow(dead_code)]
@@ -27,7 +28,7 @@ pub enum Event {
 }
 
 impl Event {
-	pub async fn execute(self, sender: Sender, socks: &mut Sockets<'_>, html: &Html) -> Result<(), String>{
+	pub async fn execute<'a>(self, sender: Sender, socks: &mut Sockets<'a>, html: &'a Html) -> Result<(), String>{
 		match self {
 			// Server Event
 			Event::ServerDisconnect => Event::server_disconnect(socks, html, sender),
@@ -38,8 +39,8 @@ impl Event {
 			Event::DCObj(dc) => Event::dcobj(socks, dc, sender),
 			Event::TmpId(msg) => Event::tmp_id(socks, msg, html, sender),
 			Event::RtcState(state) => Event::rtc_state(socks, state, html),
-			Event::RTCMessage(id, data) => socks.network.process(&data, id),
-			Event::RTCDisconnect(id) => socks.network.remove(id),
+			Event::RTCMessage(id, data) => socks.network.as_ref().ok_or("Should have a network")?.process(&data, id),
+			Event::RTCDisconnect(id) => socks.network.as_mut().ok_or("Should have a network")?.remove(id),
 			// Html Event
 			Event::Html(id, msg) => Event::html(socks, id, msg, html),
 			// data => Err(format!("cannot handle {:?}", data))
@@ -47,13 +48,14 @@ impl Event {
 	}
 
 	fn tmp_id(socks: &mut Sockets, msg: String, html: &Html, sender: Sender) -> Result<(), String> {
+		let network = socks.network.as_mut().ok_or("You are not connected to the network")?;
 		let socket = std::mem::replace(&mut socks.tmp.socket, None);
 		html.fill(ids::TMP_PEER_ID, "None");
 		socks.tmp.state = State::Disconnected(None);
 		// socks.tmp.
 		if let Some(Socket::WebRTC(socket)) = socket {
 			let peer_id = Id::from_name(msg.as_str());
-			socks.network.insert(socket.clone(), peer_id, sender);
+			network.insert(socket.clone(), peer_id, sender);
 			// TODO: delete tmp (state... , not cbs)
 
 			html.chat_info(format!("Connection openned with {}", msg).as_str());
@@ -84,14 +86,15 @@ impl Event {
 	}
 
 	fn dcobj(socks: &mut Sockets, dc: RtcDataChannel, sender: Sender) -> Result<(), String> {
+		let id = socks.network.as_ref().ok_or("Should have a network")?.id;
 		match (socks.tmp.state, &mut socks.tmp.socket) {
 			(State::Locked(_), Some(Socket::WebRTC(socket)))
-			=> socket.set_dc(dc, sender, socks.id.unwrap()).map_err(|e| format!("Error while setting dc: {:?}", e)),
+			=> socket.set_dc(dc, sender, id).map_err(|e| format!("Error while setting dc: {:?}", e)),
 			_ => Err("Receiving dc obj but tmp isnt locked with an addr".to_string())
 		}
 	}
 
-	async fn server_msg(socks: &mut Sockets<'_>, sender: Sender, msg: WebSocketData, html: &Html) -> Result<(), String> {
+	async fn server_msg<'a>(socks: &mut Sockets<'a>, sender: Sender, msg: WebSocketData, html: &'a Html) -> Result<(), String> {
 		match msg {
 			WebSocketData::OfferSDP(sdp, Some(addr)) => {
 				if socks.tmp.is_connected() || socks.tmp.is_locked(None) { // rly None ?
@@ -110,11 +113,12 @@ impl Event {
 				Ok(())
 			},
 			WebSocketData::AnswerSDP(sdp, addr) => {
+				let id = socks.network.as_ref().ok_or("Should have a network")?.id;
 				if socks.tmp.is_locked(None) {
 					Err("The socket is locked".to_string())
 				}
 				else if let Some(Socket::WebRTC(socket)) = &mut socks.tmp.socket {
-					socket.answer(&socks.server, &sdp, addr, sender, socks.id.unwrap()).await.map_err(|e| format!("{:?}", e))?;
+					socket.answer(&socks.server, &sdp, addr, sender, id).await.map_err(|e| format!("{:?}", e))?;
 					socks.tmp.state = State::Locked(addr);
 					Ok(())
 				} else {
@@ -133,10 +137,11 @@ impl Event {
 			},
 
 			WebSocketData::Id(Some(id)) => {
-				socks.id = Some(id);
-				socks.network.id = Some(id);
-				html.fill(ids::ID_FIELD_ID, &id.to_name());
-				html.chat_info(&format!("Your id is: {}", id.0));
+				if socks.network.is_none() {
+					socks.network = Some(Network::new(html, id));
+					html.fill(ids::ID_FIELD_ID, &id.to_name());
+					html.chat_info(&format!("Your id is: {}", id.0));
+				}
 				Ok(())
 			}
 			_ => Err(format!("Cannot handle from: {:?}", msg))
@@ -147,7 +152,7 @@ impl Event {
 		html.chat_info("Connected to the server!");
 		socks.server.state = State::Connected(crate::time_now());
 		// Ask or set the id server side
-		socks.server.send(Data::WsData(WebSocketData::Id(socks.id)));
+		socks.server.send(Data::WsData(WebSocketData::Id(socks.network.as_ref().and_then(|net| Some(net.id)))));
 		if socks.tmp.is_disconnected() { // add the others
 			match RTCSocket::new(&socks.server, sender, html, true).await {
 				Ok(socket) => { socks.tmp.socket = Some(Socket::WebRTC(socket)); Ok(()) },
@@ -157,6 +162,7 @@ impl Event {
 	}
 
 	fn html(socks: &Sockets, id: String, msg: JsValue, html: &Html) -> Result<(), String> {
+		let network = socks.network.as_ref().ok_or("You are not connected to the network")?;
 		match id.as_str() {
 			ids::BUTTON_SEND_MESSAGE => {
 				let msg = html.get_input_value(ids::MESSAGE_FIELD_ID);
@@ -168,10 +174,10 @@ impl Event {
 					to: None,
 					id: 0,
 					timestamp: 0,
-					from: socks.id.expect("Should have an id"),
+					from: network.id,
 					content: RTCContent::Message(msg.to_string())
 				};
-				socks.network.send(&msg, socks.id.unwrap());
+				network.send(&msg, network.id);
 				// let rsp = WebSocketData::Message(msg);
 				// socks.server.send(Data::WsData(rsp));
 				// socks.tmp.send(Data::RtcData(msg.to_string()));

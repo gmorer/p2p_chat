@@ -51,7 +51,7 @@ fn new_cb(id: Id, sender: Sender, socket: &mut RTCSocket)
 
 #[derive(Debug)]
 pub struct Network<'a> {
-	pub id: Option<Id>, // Remove Option ?
+	pub id: Id, // Remove Option ?
 	top: Option<Peer>,
 	left: Option<Peer>,
 	right: Option<Peer>,
@@ -60,9 +60,9 @@ pub struct Network<'a> {
 }
 
 impl<'a> Network<'a> {
-	pub fn new(html: &'a Html) -> Self {
+	pub fn new(html: &'a Html, id: Id) -> Self {
 		Network {
-			id: None,
+			id,
 			top: None,
 			left: None,
 			right: None,
@@ -72,15 +72,14 @@ impl<'a> Network<'a> {
 	}
 
 	pub fn insert(&mut self, mut socket: RTCSocket, id: Id, sender: Sender) -> Option<()> {
-		let self_id = self.id?;
-		let distance = self_id.distance(&id);
+		let distance = self.id.distance(&id);
 		new_cb(id, sender, &mut socket);
 		let peer = Peer { id, socket };
-		match self_id.get_axe(id) {
+		match self.id.get_axe(id) {
 			Axe::Top => {
 				match &self.top {
 					Some(top) => {
-						if self_id.distance(&top.id) > distance {
+						if self.id.distance(&top.id) > distance {
 							let peer = Some(peer);
 							self.peer_cache.push(std::mem::replace(&mut self.top, peer)?);
 						} else {
@@ -93,7 +92,7 @@ impl<'a> Network<'a> {
 			Axe::Right => {
 				match &self.right {
 					Some(right) => {
-						if self_id.distance(&right.id) > distance {
+						if self.id.distance(&right.id) > distance {
 							let peer = Some(peer);
 							self.peer_cache.push(std::mem::replace(&mut self.right, peer)?);
 						} else {
@@ -106,7 +105,7 @@ impl<'a> Network<'a> {
 			Axe::Left => {
 				match &self.left {
 					Some(left) => {
-						if self_id.distance(&left.id) > distance {
+						if self.id.distance(&left.id) > distance {
 							let peer = Some(peer);
 							self.peer_cache.push(std::mem::replace(&mut self.left, peer)?);
 						} else {
@@ -125,7 +124,7 @@ impl<'a> Network<'a> {
 		match &data.content {
 			RTCContent::Message(msg) => {
 				if let Some(target) = data.to {
-					if target == self.id.expect("Should have an id") {
+					if target == self.id {
 						self.html.chat_private(data.from.to_name().as_str(), msg.as_str())
 					} else {
 						// self.send_to() 

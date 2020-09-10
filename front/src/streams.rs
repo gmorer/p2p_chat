@@ -1,12 +1,10 @@
 use std::net::SocketAddr;
 use crossplatform::proto_ws::WebSocketData;
-use crossplatform::id::Id;
 
 use crate::{ log, console_log };
 use crate::webrtc::RTCSocket;
 use crate::websocket;
 use crate::p2p::Network;
-use crate::html::Html;
 
 // Do we need this file ?
 
@@ -93,23 +91,20 @@ impl Pstream {
 
 // TODO all mutex
 pub struct Sockets<'a> {
-	pub id: Option<Id>, // Should be in network
 	pub server: Pstream,
-	pub network: Network<'a>,
-
-	// TODO: Multiples tmp?
+	pub network: Option<Network<'a>>,
 	pub tmp: Pstream // should be in Network
+	// TODO: Multiples tmp?
 }
 
 impl<'a> Sockets<'a> {
-	pub fn default(html: &'a Html) -> Self {
+	pub fn default() -> Self {
 		Sockets {
 			server: Pstream { state: State::Disconnected(None), socket: None },
 			// server: Some(Pstream::from_ws(server_ws)),
 			// dright: None,
-			network: Network::new(html),
 			tmp: Pstream { state: State::Disconnected(None), socket: None},
-			id: None
+			network: None,
 			// dleft: None
 		}
 	}

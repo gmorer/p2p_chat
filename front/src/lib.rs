@@ -53,7 +53,7 @@ async fn main_loop() {
 	let sender = Sender(sender);
 	let html = Html::new(sender.clone());
 	sender.send(Event::ServerDisconnect);
-	let mut socks = streams::Sockets::default(&html);
+	let mut socks = streams::Sockets::default();
 	/*
 	for_each not working with async block inside we got:receiver
 	"A lifetime cannot be determined in the given situation."
