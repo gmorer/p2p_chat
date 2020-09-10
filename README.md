@@ -16,5 +16,14 @@ $> make build
 // run
 $> make run
 ```
-
 http://localhost:8088
+
+## Roadmap
+ - [x] websocket with server
+ - [x] client / client communication
+ - [x] basic p2p exchange
+ - [ ] self healing network
+ - [ ] private messages
+ - [ ] encryption
+ - [ ] nice ui
+ - [ ] automatic tests
