@@ -57,8 +57,12 @@ pub async fn send_static(req: Request<Body>) -> Result<Response<Body>> {
 	let mime = match Path::new(&uri).extension().and_then(OsStr::to_str).unwrap() {
 		"html" => "text/html",
 		"js" => "application/javascript",
-		"wasm" => "application/wasm",
-		_ => ""
+        "wasm" => "application/wasm",
+        "css" => "text/css",
+		_ => {
+            println!("no mime type for {}", uri);
+            ""
+        }
 	};
 	let static_folder = env::var(STATIC_FOLDER_KEY).unwrap_or(STATIC_FOLDER_DFL.to_string());
 	// TODO: Range header
@@ -77,10 +81,15 @@ pub async fn send_static(req: Request<Body>) -> Result<Response<Body>> {
 
 /// Our server HTTP handler to initiate HTTP upgrades.
 async fn handler(peers: PeerMap, addr: SocketAddr, req: Request<Body>) -> Result<Response<Body>> {
-	println!("{:?}", req);
-	if req.headers().get(UPGRADE) == Some(&HeaderValue::from_static("websocket")) {
-		websocket::handler(peers, addr, req).await
-	} else { send_static(req).await }
+    let res = if req.headers().get(UPGRADE) == Some(&HeaderValue::from_static("websocket")) {
+        println!("======incomming======");
+        println!("{:?}", req.headers());
+        websocket::handler(peers, addr, req).await
+    } else { send_static(req).await };
+    println!("======outgoing======");
+
+    println!("{:?}", res.as_ref().unwrap().headers());
+    res
 }
 
 #[tokio::main]

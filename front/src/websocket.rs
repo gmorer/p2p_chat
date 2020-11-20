@@ -27,8 +27,14 @@ impl Clone for WebSocket {
 
 impl WebSocket {
 	pub fn new(sender: Sender, html: &Html) -> Result<Self, String> {
+        let protocol = if html.window.location().protocol() == Ok("https:".to_string()) {
+            "wss"
+        } else {
+            "ws"
+        };
 		let socket_url = format!(
-			"ws://{}",
+            "{}://{}",
+            protocol,
 			html.window.location().host().expect("cannot get the url")
 		);
 		html.chat_info("Reconnecting to the server...");
@@ -58,6 +64,10 @@ impl WebSocket {
 			sender3.send(Event::ServerDisconnect);
 		}) as Box<dyn FnMut(JsValue)>);
 
+        let error = Closure::wrap(Box::new(move |args: JsValue| {
+            console_log!("EArror whith websocketL {:?}", args);
+        }) as Box<dyn FnMut(JsValue)>);
+        
 		/* Set the cbs */
 		socket.set_onmessage(Some(message_from_server.as_ref().unchecked_ref()));
 		cbs.push(message_from_server);
@@ -65,6 +75,8 @@ impl WebSocket {
 		cbs.push(connected_from_server);
 		socket.set_onclose(Some(disconnect_from_server.as_ref().unchecked_ref()));
 		cbs.push(disconnect_from_server);
+        socket.set_onerror(Some(error.as_ref().unchecked_ref()));
+		cbs.push(error);
 		Ok(Self {
 			socket,
 			cbs

@@ -1,7 +1,2 @@
 import init from './weblib.js';
-
-async function run() {
-	await init();
-}
-
-run();
+(async function run() { await init(); })()

@@ -2,7 +2,7 @@ use serde::{Serialize, Deserialize};
 use crate::id::Id;
 
 // Present here for the serde crate
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Hash)]
 pub struct RTCData {
 	pub id: u32, // Random generated id
 	pub timestamp: u32,
@@ -10,7 +10,8 @@ pub struct RTCData {
 	pub content: RTCContent,
 	pub to: Option<Id> // target or broadcast
 }
-#[derive(Serialize, Deserialize, Debug)]
+
+#[derive(Serialize, Deserialize, Debug, Hash)]
 pub enum RTCContent {
 	Message(String), // Private or Broadcast
 	Received(u32, u32), // id and timestamp

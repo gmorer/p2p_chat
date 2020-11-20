@@ -13,7 +13,7 @@ const LETTERS: &str = "abcdefghijklmnopqrstuvwxyzABCDEFGHIKKLMNOPQRSTUVWXYZ01234
 const LETTERS_LENGTH: u64 = 64;
 const LENGTHS_BITS: u64 = 6;
 
-#[derive(Debug, PartialEq, Eq, Serialize, Deserialize, Copy, Clone)]
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize, Copy, Clone, Hash)]
 pub struct Id(pub u64);
 
 impl Id {

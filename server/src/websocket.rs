@@ -83,7 +83,8 @@ pub async fn handler(peers: PeerMap, addr: SocketAddr, req: Request<Body>) -> Re
 		Some(key) => key,
 		None => return crate::send_static(req).await
 	};
-	// spawn task that will be trigerd after the HTML response
+    // spawn task that will be trigerd after the HTML response
+    println!("Upgrade starting...");
 	tokio::task::spawn(async move {
 		// transform the body into a future
 		match req.into_body().on_upgrade().await {

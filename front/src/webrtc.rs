@@ -73,7 +73,6 @@ impl RTCSocket {
 				}
 			}) as Box<dyn FnMut(JsValue)>,
 		);
-		console_log!("Put false onmessage");
 		data_channel.set_onmessage(Some(onmessage_callback.as_ref().unchecked_ref()));
 		cbs.push(onmessage_callback);
 
